@@ -18,8 +18,8 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install Python packages
@@ -42,7 +42,7 @@ jobs:
           $version = python -c "import issuebuilder; print(issuebuilder.__version__)"
           choco install innosetup -y --no-progress
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$version" packaging\windows\installer.iss
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: windows-installer
           path: dist/*.exe
@@ -51,8 +51,8 @@ jobs:
   ubuntu:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Install system packages
@@ -75,7 +75,7 @@ jobs:
           VERSION=$(python -c "import issuebuilder; print(issuebuilder.__version__)")
           python packaging/build_app.py
           bash packaging/linux/build_deb.sh "$VERSION"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: ubuntu-package
           path: dist/*.deb
@@ -85,8 +85,8 @@ jobs:
     needs: [windows, ubuntu]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
         with:
           path: assets
           merge-multiple: true
