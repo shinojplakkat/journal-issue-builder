@@ -77,11 +77,12 @@ python samples/make_samples.py out/  # invented sample articles (DOCX, ODT, PDF,
 
 ## Building the installers
 
-The workflow `.github/workflows/build.yml` runs when a tag such as `v0.1.0` is pushed. It runs the
+The workflow `.github/workflows/build.yml` runs when the version number in
+`src/issuebuilder/__init__.py` changes (or when started from the Actions tab). It runs the
 tests on Windows and Ubuntu, builds the program with PyInstaller (`packaging/build_app.py`), makes
 the Windows installer with Inno Setup (`packaging/windows/installer.iss`, per-user install, no
 administrator rights) and the Ubuntu package (`packaging/linux/build_deb.sh`), and publishes both
-as a GitHub release.
+as a GitHub release tagged `v<version>`.
 
 ## Changes from the blueprint's technology choices
 
