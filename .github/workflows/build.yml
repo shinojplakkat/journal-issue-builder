@@ -31,7 +31,7 @@ jobs:
       - name: Tests (formulas, full pipeline, program window)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -v
+        run: python -m pytest -v -p no:cacheprovider
       - name: System check
         run: python -m issuebuilder doctor; exit 0
       - name: Build program folder
@@ -67,7 +67,7 @@ jobs:
       - name: Tests (formulas, full pipeline, program window)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -v
+        run: python -m pytest -v -p no:cacheprovider
       - name: System check
         run: python -m issuebuilder doctor || true
       - name: Build program folder and .deb
