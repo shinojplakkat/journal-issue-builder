@@ -36,6 +36,13 @@ jobs:
         run: python -m issuebuilder doctor; exit 0
       - name: Build program folder
         run: python packaging/build_app.py
+      - name: Self-test of the packaged program
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\JournalIssueBuilder\JournalIssueBuilder.exe `
+               -ArgumentList "selftest","--report","selftest.txt" -Wait -PassThru
+          Get-Content selftest.txt
+          if ($p.ExitCode -ne 0) { Write-Output "::error title=Packaged self-test (Windows)::$((Get-Content selftest.txt -Raw) -replace "`r?`n",'%0A')"; exit 1 }
       - name: Build installer
         shell: pwsh
         run: |
@@ -74,6 +81,10 @@ jobs:
         run: |
           VERSION=$(python -c "import issuebuilder; print(issuebuilder.__version__)")
           python packaging/build_app.py
+          if ! dist/JournalIssueBuilder/JournalIssueBuilder selftest --report selftest.txt; then
+            echo "::error title=Packaged self-test (Ubuntu)::$(sed ':a;N;$!ba;s/\n/%0A/g' selftest.txt)"
+            exit 1
+          fi
           bash packaging/linux/build_deb.sh "$VERSION"
       - uses: actions/upload-artifact@v5
         with:

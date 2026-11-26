@@ -10,7 +10,7 @@ from pikepdf import Pdf
 from ..assembler.issue import FRONT_PARTS, BACK_PARTS, Plan
 from ..cover.wrap import CoverPages
 from ..pdfops import bookmarks, inspect
-from ..settings.load_save import safe_name
+from ..settings.load_save import safe_name, unique_name
 from ..settings.models import IssueSettings, JournalSettings
 from .interior import build_interior
 
@@ -138,6 +138,7 @@ def electronic_articles(plan: Plan, journal: JournalSettings, issue: IssueSettin
                         *, proof: bool) -> list[Path]:
     """One PDF per article, cut from the issue so the page numbers match."""
     files = []
+    used: set[str] = set()
     for placement in plan.placements:
         article = placement.article
         specs = [s for s in plan.pages if s.element == article.id and s.kind == "content"]
@@ -156,7 +157,8 @@ def electronic_articles(plan: Plan, journal: JournalSettings, issue: IssueSettin
             subject=f"{journal.title}, Vol. {issue.volume}, No. {issue.number}, {issue.year}, pp. {placement.pages_label}",
             keywords="; ".join(article.keywords),
         )
-        name = f"{issue.slug}_{safe_name(article.first_author_surname, 20)}_{safe_name(article.short_title or article.title, 30)}.pdf"
+        name = unique_name(f"{issue.slug}_{safe_name(article.first_author_surname, 20)}_"
+                           f"{safe_name(article.short_title or article.title, 30)}", used, ".pdf")
         target = folder / name
         folder.mkdir(parents=True, exist_ok=True)
         pdf.save(target)

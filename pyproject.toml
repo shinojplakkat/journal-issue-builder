@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "issuebuilder"
-version = "0.1.0"
+version = "0.1.1"
 description = "Offline software that assembles journal issues from Word, ODT and PDF articles."
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }

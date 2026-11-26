@@ -14,10 +14,16 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("doctor", help="check that the required programs and libraries are installed")
 
     commands.add_parser("gui", help="open the program window (the default)")
+    selftest = commands.add_parser("selftest", help="build a small test issue to check the installation")
+    selftest.add_argument("--report", help="also write the result to this file")
 
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor()
+    if args.command == "selftest":
+        from .selftest import run_selftest
+
+        return run_selftest(args.report)
     from .gui.app import main as gui_main  # Qt is loaded only when the window is needed
 
     return gui_main()

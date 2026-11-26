@@ -22,7 +22,7 @@ from ..pdfops import bookmarks, merge
 from ..pdfops.inspect import PT_PER_MM
 from ..pdfops.stamp import SANS, SANS_BOLD, printable, register_fonts
 from ..settings.defaults import PAPER_SIZES_MM
-from ..settings.load_save import safe_name
+from ..settings.load_save import safe_name, unique_name
 from ..settings.models import IssueSettings, JournalSettings
 from .interior import build_interior
 from .printing import _impose
@@ -93,6 +93,7 @@ def make_offprints(plan: Plan, journal: JournalSettings, issue: IssueSettings, c
         for p in chosen
     }
     detail_pdfs = fm.render(details, work)
+    used: set[str] = set()
 
     for placement in chosen:
         article = placement.article
@@ -106,7 +107,8 @@ def make_offprints(plan: Plan, journal: JournalSettings, issue: IssueSettings, c
         front = covers.front
         if cover_line:
             front = _offprint_cover(covers.front, work / f"{article.id}_cover.pdf", width, height, article.author_names)
-        base = f"{issue.slug}_{safe_name(article.first_author_surname, 20)}_{safe_name(article.short_title or article.title, 30)}"
+        base = unique_name(f"{issue.slug}_{safe_name(article.first_author_surname, 20)}_"
+                           f"{safe_name(article.short_title or article.title, 30)}", used, "")
         body_items = [(body, k) for k in range(len(specs))]
 
         if electronic:

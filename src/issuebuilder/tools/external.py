@@ -51,10 +51,16 @@ class ExternalTool:
         return path
 
     def version(self) -> str:
-        """Return the first line of the program's version output."""
+        """Return the first line of the program's version output.
+
+        Raises RuntimeError if the program starts but reports an error.
+        """
         result = self.run(self.version_args, timeout=60)
         text = (result.stdout or result.stderr).strip()
-        return text.splitlines()[0] if text else "unknown version"
+        first = text.splitlines()[0] if text else "unknown version"
+        if result.returncode != 0:
+            raise RuntimeError(first)
+        return first
 
     def run(self, args: list[str], timeout: float = 600, cwd: Path | None = None):
         """Run the program with the given arguments and return the result."""
@@ -65,9 +71,41 @@ class ExternalTool:
             text=True,
             timeout=timeout,
             cwd=cwd,
+            env=clean_environment(),
             # Hides the black console window that would flash up on Windows.
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+
+
+def clean_environment() -> dict[str, str]:
+    """The environment for outside programs, without the packaged program's own libraries.
+
+    The packaged program (PyInstaller) points the library search path at its
+    own folder. LibreOffice must not load those libraries: it would fail with
+    errors such as "GLIBCXX_3.4.31 not found" (Linux) or a missing DLL entry
+    point (Windows).
+    """
+    env = dict(os.environ)
+    if not getattr(sys, "frozen", False):
+        return env
+    for name in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        original = env.pop(name + "_ORIG", None)
+        if original is not None:
+            env[name] = original
+        else:
+            env.pop(name, None)
+    if sys.platform == "win32":
+        # Undo the DLL folder the packaged program set for itself, for the child process.
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetDllDirectoryW(None)
+        except Exception:
+            pass
+        bundle = str(Path(sys.executable).parent)
+        env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
+                                      if p and not p.startswith(bundle))
+    return env
 
 
 def _bundle_dir() -> Path:

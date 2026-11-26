@@ -45,6 +45,16 @@ def safe_name(text: str, limit: int = 40) -> str:
     return text[:limit] or "untitled"
 
 
+def unique_name(base: str, used: set[str], suffix: str) -> str:
+    """base + suffix, with _2, _3 ... added if the name is already used in this export."""
+    name, n = base, 1
+    while name in used:
+        n += 1
+        name = f"{base}_{n}"
+    used.add(name)
+    return name + suffix
+
+
 class JournalFolder:
     """One journal on disk."""
 
