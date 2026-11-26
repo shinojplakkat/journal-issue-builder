@@ -221,3 +221,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Journal Issue Builder: never commit real author manuscripts or issue data
+samples/private/
+private/
+
+# Bundled Pandoc/Typst executables (added by the build, not committed)
+bin/
