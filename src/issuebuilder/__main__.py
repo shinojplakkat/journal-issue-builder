@@ -13,11 +13,14 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("doctor", help="check that the required programs and libraries are installed")
 
+    commands.add_parser("gui", help="open the program window (the default)")
+
     args = parser.parse_args(argv)
     if args.command == "doctor":
         return run_doctor()
-    parser.print_help()
-    return 0
+    from .gui.app import main as gui_main  # Qt is loaded only when the window is needed
+
+    return gui_main()
 
 
 if __name__ == "__main__":

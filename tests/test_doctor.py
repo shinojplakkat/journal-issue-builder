@@ -30,5 +30,5 @@ def test_doctor_runs_and_prints_report(capsys):
     code = main(["doctor"])
     output = capsys.readouterr().out
     assert code in (0, 1)
-    for name in ("LibreOffice", "Pandoc", "Typst", "Ghostscript", "PyMuPDF"):
+    for name in ("LibreOffice", "Ghostscript", "pikepdf", "ReportLab", "PySide6"):
         assert name in output

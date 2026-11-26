@@ -7,16 +7,17 @@ import sys
 from .tools.external import ExternalTool
 from .tools.ghostscript import GHOSTSCRIPT
 from .tools.libreoffice import LIBREOFFICE
-from .tools.pandoc import PANDOC
-from .tools.typst import TYPST
 
-TOOLS: list[ExternalTool] = [LIBREOFFICE, PANDOC, TYPST, GHOSTSCRIPT]
+TOOLS: list[ExternalTool] = [LIBREOFFICE, GHOSTSCRIPT]
 
 # (import names to try, name shown to the user, what it is needed for)
-# PyMuPDF is imported as "pymupdf" in new versions and "fitz" in older ones.
 LIBRARIES = [
-    (["docx"], "python-docx", "reading Word files"),
-    (["pymupdf", "fitz"], "PyMuPDF", "all PDF work"),
+    (["docx"], "python-docx", "reading and restyling Word files"),
+    (["pikepdf"], "pikepdf", "joining, numbering and imposing PDFs"),
+    (["reportlab"], "ReportLab", "page numbers, covers and calibration sheets"),
+    (["pdfplumber"], "pdfplumber", "reading text from PDF articles"),
+    (["pypdfium2"], "pypdfium2", "page previews"),
+    (["PIL"], "Pillow", "pictures"),
     (["PySide6"], "PySide6", "the program window (GUI)"),
 ]
 
