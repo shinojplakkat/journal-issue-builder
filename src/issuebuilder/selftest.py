@@ -30,8 +30,29 @@ def _sample_word(path: Path) -> Path:
     return path
 
 
+class _Report(list):
+    """Lines of the report, also written to the file at once, so a hang shows where it stopped."""
+
+    def __init__(self, path: Path | None):
+        super().__init__()
+        self.path = Path(path) if path else None
+        if self.path:
+            self.path.write_text("", encoding="utf-8")
+
+    def append(self, line: str) -> None:
+        super().append(line)
+        if self.path:
+            with open(self.path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+
+    def __iadd__(self, more):
+        for line in more:
+            self.append(line)
+        return self
+
+
 def run_selftest(report_file: Path | None = None) -> int:
-    lines: list[str] = []
+    lines = _Report(report_file)
     ok = False
     try:
         from .doctor import TOOLS, check_tool
@@ -39,7 +60,9 @@ def run_selftest(report_file: Path | None = None) -> int:
         from .outputs.export import run_export
         from .settings.load_save import JournalFolder
 
+        lines.append("Started")
         for tool in TOOLS:
+            lines.append(f"Checking {tool.name}")
             found, message = check_tool(tool)
             lines.append(f"{tool.name}: {'OK' if found else 'not available'} - {message}")
         with tempfile.TemporaryDirectory(prefix="issuebuilder-selftest-") as tmp:
@@ -49,10 +72,11 @@ def run_selftest(report_file: Path | None = None) -> int:
             settings = issue.load()
             settings.export.print_cover = True
             issue.save(settings)
+            lines.append("Importing a Word article")
             articles = import_files(issue, settings, [_sample_word(root / "article.docx")])
             lines.append(f"Import: {articles[0].import_status} {articles[0].import_message}".strip())
             lines.append(f"Title found: {articles[0].title}")
-            result = run_export(journal, issue, force=True, offprints=True)
+            result = run_export(journal, issue, lines.append, force=True, offprints=True)
             lines += [f"Note: {n}" for n in result.notes]
             lines += [f"File: {f.name}" for f in result.files]
             electronic = issue.output / f"{settings.slug}_electronic_issue.pdf"
@@ -61,8 +85,5 @@ def run_selftest(report_file: Path | None = None) -> int:
     except Exception:
         lines.append(traceback.format_exc())
     lines.append("SELFTEST " + ("PASSED" if ok else "FAILED"))
-    text = "\n".join(lines)
-    print(text)
-    if report_file is not None:
-        Path(report_file).write_text(text, encoding="utf-8")
+    print("\n".join(lines))
     return 0 if ok else 1

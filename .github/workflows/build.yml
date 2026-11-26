@@ -17,6 +17,7 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -38,11 +39,19 @@ jobs:
         run: python packaging/build_app.py
       - name: Self-test of the packaged program
         shell: pwsh
+        timeout-minutes: 20
         run: |
           $p = Start-Process -FilePath dist\JournalIssueBuilder\JournalIssueBuilder.exe `
-               -ArgumentList "selftest","--report","selftest.txt" -Wait -PassThru
-          Get-Content selftest.txt
-          if ($p.ExitCode -ne 0) { Write-Output "::error title=Packaged self-test (Windows)::$((Get-Content selftest.txt -Raw) -replace "`r?`n",'%0A')"; exit 1 }
+               -ArgumentList "selftest","--report","$PWD\selftest.txt" -PassThru
+          $finished = $p.WaitForExit(900000)
+          if (-not $finished) { Stop-Process -Id $p.Id -Force; Get-Process soffice* -ErrorAction SilentlyContinue | Stop-Process -Force }
+          $report = if (Test-Path selftest.txt) { Get-Content selftest.txt -Raw } else { "no report written" }
+          Write-Output $report
+          if ((-not $finished) -or $p.ExitCode -ne 0) {
+            $state = if ($finished) { "exit code $($p.ExitCode)" } else { "timed out" }
+            Write-Output "::error title=Packaged self-test (Windows) $state::$($report -replace "`r?`n",'%0A')"
+            exit 1
+          }
       - name: Build installer
         shell: pwsh
         run: |
@@ -57,6 +66,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-22.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

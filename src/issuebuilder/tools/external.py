@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -63,18 +64,48 @@ class ExternalTool:
         return first
 
     def run(self, args: list[str], timeout: float = 600, cwd: Path | None = None):
-        """Run the program with the given arguments and return the result."""
+        """Run the program and return a CompletedProcess with its output.
+
+        Output goes to temporary files, not pipes: LibreOffice on Windows starts
+        a second process that can keep a pipe open and make the wait endless.
+        On timeout the whole process tree is stopped.
+        """
         command = [str(self.require()), *args]
-        return subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            cwd=cwd,
-            env=clean_environment(),
-            # Hides the black console window that would flash up on Windows.
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=err,
+                cwd=cwd,
+                env=clean_environment(),
+                # Hides the black console window that would flash up on Windows.
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            try:
+                code = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                _stop_tree(process)
+                raise
+            out.seek(0)
+            err.seek(0)
+            return subprocess.CompletedProcess(
+                command, code,
+                out.read().decode("utf-8", "replace"),
+                err.read().decode("utf-8", "replace"),
+            )
+
+
+def _stop_tree(process: subprocess.Popen) -> None:
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    else:
+        process.kill()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def clean_environment() -> dict[str, str]:
