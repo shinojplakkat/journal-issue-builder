@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QHBoxLayout
 from .. import __version__
 from ..tools.libreoffice import LIBREOFFICE
 from .common import AppState, error, open_folder
+from .screens.books import BooksScreen
 from .screens.cover_print import CoverPrintScreen
 from .screens.export import ExportScreen
 from .screens.issue import IssueScreen, NewIssueDialog
@@ -39,7 +40,6 @@ class MainWindow(QMainWindow):
         self.settings = QSettings("JournalIssueBuilder", "JournalIssueBuilder")
         self.state = AppState()
 
-        # Top bar: journal folder and issue choice
         toolbar = QToolBar("Issue")
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
@@ -67,17 +67,15 @@ class MainWindow(QMainWindow):
             ("Cover and print", CoverPrintScreen(self.state)),
             ("Export", ExportScreen(self.state)),
             ("Offprints", OffprintsScreen(self.state)),
+            ("Book Publishing", BooksScreen(self.settings)),
         ]
         for title, screen in self.screens:
             self.tabs.addTab(screen, title)
         self.setCentralWidget(self.tabs)
         self.statusBar().showMessage("Ready")
-
         self.build_menus()
         self.state.journal_changed.connect(self.refresh_issue_list)
         self.state.issue_changed.connect(self.refresh_issue_list)
-
-    # ------------------------------------------------------------------ menus
 
     def build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -91,20 +89,15 @@ class MainWindow(QMainWindow):
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
-
         help_menu = self.menuBar().addMenu("&Help")
         check = QAction("System check…", self)
         check.triggered.connect(self.system_check)
         help_menu.addAction(check)
         about = QAction("About", self)
         about.triggered.connect(lambda: QMessageBox.about(
-            self, APP_NAME, f"<b>{APP_NAME}</b> {__version__}<br>Assembles journal issues from Word, ODT and "
-                            "PDF articles: electronic and print files, covers and offprints.<br><br>"
-                            "Licence: GNU AGPL-3.0. Uses LibreOffice, pikepdf, ReportLab, pdfplumber, "
-                            "pypdfium2, python-docx and Qt (PySide6)."))
+            self, APP_NAME, f"<b>{APP_NAME}</b> {__version__}<br>Creates journal issues and edited books from Word, ODT and PDF submissions.<br><br>"
+                            "Licence: GNU AGPL-3.0. Uses LibreOffice, pikepdf, ReportLab, pdfplumber, pypdfium2, python-docx and Qt (PySide6)."))
         help_menu.addAction(about)
-
-    # ------------------------------------------------------------------ journal and issue
 
     def start(self) -> None:
         last = self.settings.value("journal_folder", "")
@@ -113,22 +106,16 @@ class MainWindow(QMainWindow):
         try:
             self.state.open_journal(folder)
         except OSError as problem:
-            error(self, "Journal folder", f"Could not open {folder}:\n{problem}")
+            error(self, "Journal folder", f"Could not open {folder}:\\n{problem}")
             return
         self.settings.setValue("journal_folder", str(folder))
         if first_run and not self.state.journal.list_issues():
-            # Start with an issue so every screen can be explored at once.
             from datetime import date
-
             issue = self.state.journal.create_issue(1, 1, "January", date.today().year + 1)
             self.state.open_issue(issue)
-            QMessageBox.information(
-                self, "Welcome",
-                f"A sample journal was created in:\n{folder}\n\nReplace the sample details on the Journal screen, "
-                "then add articles on the Issue screen.")
+            QMessageBox.information(self, "Welcome", f"A sample journal was created in:\\n{folder}\\n\\nReplace the sample details on the Journal screen, then add articles on the Issue screen.")
         if LIBREOFFICE.find() is None:
-            QMessageBox.warning(self, "LibreOffice not found", LIBREOFFICE.install_hint +
-                                "\n\nWithout LibreOffice, Word and ODT articles cannot be laid out.")
+            QMessageBox.warning(self, "LibreOffice not found", LIBREOFFICE.install_hint + "\\n\\nWithout LibreOffice, Word and ODT articles cannot be laid out.")
 
     def refresh_issue_list(self) -> None:
         journal = self.state.journal
@@ -189,9 +176,7 @@ class MainWindow(QMainWindow):
     def system_check(self) -> None:
         import contextlib
         import io
-
         from ..doctor import run_doctor
-
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
             run_doctor()

@@ -65,6 +65,30 @@ over the pages with pikepdf, so they look the same on Word-built and PDF article
     output/                    PDFs and export_log.txt
 ```
 
+## Book publishing (new)
+
+The **Book Publishing** tab provides a separate workflow for edited volumes and authored monographs.
+It stores books independently from journal issues, so existing journal data and workflows are not changed.
+
+- Create a book library and individual book projects.
+- Record title, subtitle, publisher, publication place/year, edition, language, subject, print/digital ISBN,
+  copyright details, trim size and series information.
+- Maintain editor, author and contributor records (affiliation, email, ORCID and biography fields in the data model).
+- Import multiple DOC, DOCX, ODT, RTF and PDF chapter files. Submitted originals are copied unchanged.
+- Edit chapter titles and author bylines, reorder chapters, and choose which chapters to include.
+- Add dedication, epigraph, foreword, preface, acknowledgements, introduction, appendices, glossary,
+  consolidated bibliography and index material.
+- Generate a single PDF with title page, publication-details page, contents, contributor list, optional
+  front/back matter, and the selected chapters in the saved order.
+- Validate ISBN-13 check digits before saving book details. ISBNs are recorded, not assigned by the app;
+  publishers must obtain them through the relevant ISBN agency.
+
+The first implementation deliberately focuses on compiling edited volumes from supplied chapter files.
+Chapter source formatting is retained rather than re-typeset. Printer-specific cover wraps/spine calculations,
+full print-imposition controls, automated index generation, EPUB output, detailed page-numbering schemes,
+and automatic chapter-reference consolidation are not yet included. The book workflow is separate from
+journal publishing and does not alter existing journal folders.
+
 ## Development
 
 ```
