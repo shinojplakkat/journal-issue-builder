@@ -51,10 +51,9 @@ def restore_links(source: Path, target: Path) -> int:
                     if source_destination and len(source_destination):
                         destination_page = page_index.get(tuple(source_destination[0].objgen))
                     copied = converted.copy_foreign(link)
-                    # PDF/A requires every non-popup annotation to carry flags.
-                    # Preserve source flags, or make restored links visible and printable.
-                    if "/F" not in copied:
-                        copied["/F"] = 4
+                    # PDF/A requires link annotations to be printable. Keep
+                    # any existing flags while adding the required Print bit.
+                    copied["/F"] = int(copied.get("/F", 0)) | 4
                     destination = copied.get("/Dest")
                     if destination_page is not None and destination is not None:
                         destination[0] = converted.pages[destination_page].obj
