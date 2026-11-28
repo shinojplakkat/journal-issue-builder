@@ -147,7 +147,7 @@ def export_book(folder: BookFolder, progress=None) -> Path:
     for number, chapter in enumerate(selected, 1):
         say(f"Preparing chapter {number} of {len(selected)}: {chapter.title}")
         parts.append(_chapter_pdf(folder, chapter, number))
-    safe_title = re.sub(r"[^\\w.-]+", "_", book.title).strip("_") or "book"
+    safe_title = re.sub(r"[^\w.-]+", "_", book.title).strip("_") or "book"
     target = folder.output / f"{safe_title}.pdf"
     target.parent.mkdir(parents=True, exist_ok=True)
     say("Combining pages into the book PDF")
