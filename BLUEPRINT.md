@@ -2,7 +2,7 @@
 
 Offline desktop software (Windows and Linux) that turns submitted articles in mixed formats into a finished journal issue: one electronic PDF, print-ready files, and single-article offprints.
 
-Version: 0.2.0 (implementation status updated 2026-11-28). The software is a working first version;
+Version: 0.3.0 (implementation status updated 2026-11-28). The software is a working first version;
 the original plan below has been reconciled with the implementation and remaining validation work.
 
 ## Current implementation status
@@ -17,12 +17,14 @@ product; the status here records what has actually been implemented and what sti
 | Article layout and issue assembly (M6–M8) | Implemented with LibreOffice restyling of a copy of the submitted Word file; assembly, contents, page balancing, font profiles and inside-cover matter are present. A 31-page synthetic issue PDF now serves as a regression baseline for page count, contents entries/page numbers, bookmarks and links. | Visual fidelity across author files and multilingual scripts needs real samples. The planned Pandoc/Typst rebuild is a documented technology change. |
 | Covers (M9) | Image and generated covers, editable solid/pattern backgrounds, cover text overlays, back-cover details, spine and mark controls are implemented. | Confirm trim, bleed, fold, and binder measurements using printed samples and the intended binder. |
 | Print outputs (M10) | Staple/glue output, imposition, grayscale choice, per-paper duplex/flip/color profiles, 100% scale guidance, crop/fold marks, calibration sheets and thickness warning are implemented. | Print calibration and booklet/fold checks on the actual A5/A4/A3 printer are outstanding. |
-| Electronic PDF (M11) | Bookmarks, contents/DOI/site/email links, page labels, metadata, optional proof watermark, Ghostscript PDF/A-2b conversion, and an unembedded-font report are implemented. A 31-page, five-article synthetic issue passed veraPDF 1.30.4 PDF/A-2b validation (144 rules, 249,153 checks, no failures); its contents page was visually compared before and after conversion. The check also found and fixed missing flags on restored links. | Repeat PDF/A validation on an author-approved real issue and inspect its visual fidelity and links after conversion. |
+| Electronic PDF (M11) | Bookmarks, contents/DOI/site/email links, page labels, metadata, optional proof watermark, Ghostscript PDF/A-2b conversion, and an unembedded-font report are implemented. Conversion supports Ghostscript 9.55, retains Unicode titles through synchronized XMP and DocumentInfo metadata, and restores printable links. A 31-page, five-article synthetic issue passed veraPDF 1.30.4 PDF/A-2b validation (144 rules, 249,153 checks, no failures); its contents page was visually compared before and after conversion. | Repeat PDF/A validation on an author-approved real issue and inspect its visual fidelity and links after conversion. |
 | Offprints (M12) | Single and batch electronic/print offprints preserve article numbering/parity and include publication details and the editorial masthead. | Confirm sample page ranges and booklet output on a printer. |
 | Validation (M13) | Journal/issue/article, DOI, ISSN/ORCID, duplicates, abstract, scaled text, image resolution and script-font checks are implemented. | Automated visual checks for dark grayscale images and physical page-count/print behavior still need print samples. |
-| GUI and packaging (M14–M15) | Workflow screens, screen-fitted resizable window, explicit minimize/maximize/restore menu, refreshed light theme, click-only type-size fields with a restore-defaults action, and Windows/Linux package build/install self-check steps are implemented. The existing release workflow builds on versioned main pushes or a manual run. | Perform a clean-machine install check before release. |
+| GUI and packaging (M14–M15) | Workflow screens, screen-fitted resizable window, explicit minimize/maximize/restore menu, refreshed light theme, click-only type-size fields with a restore-defaults action, and Windows/Linux package build/install self-check steps are implemented. A local 0.3.0 Ubuntu package was built and its packaged-program self-test passed. The existing release workflow builds on versioned main pushes or a manual run. | Perform a clean-machine install check before release. |
 
-The owner-provided sample issue contains nine original PDF files. A local read check accepted seven
+The CI compatibility regression was reproduced with Ghostscript 9.55.0 and fixed. The full
+71-test suite passes locally against that Ghostscript version. The owner-provided sample issue
+contains nine original PDF files. A local read check accepted seven
 as text-readable and correctly flagged two scans; four of the readable PDFs exposed unmapped-glyph
 placeholders, so PDF import now suppresses unreliable metadata suggestions and asks the editor to
 enter them manually. These meeting-minute PDFs do not satisfy the 10–20 anonymised academic
