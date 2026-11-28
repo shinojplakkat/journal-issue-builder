@@ -4,7 +4,7 @@ Offline desktop program (Windows and Ubuntu) that assembles a journal issue from
 articles in DOC, DOCX, ODT and PDF: an electronic issue PDF, per-article PDFs, print files for
 stapled (saddle-stitch) or glued binding, covers with spine, and single-article offprints.
 
-Version: 0.2.0. Licence: AGPL-3.0. See [BLUEPRINT.md](BLUEPRINT.md) for the
+Version: 0.3.0. Licence: AGPL-3.0. See [BLUEPRINT.md](BLUEPRINT.md) for the
 module status, implementation choices, and outstanding sample/printer validation.
 
 ## Requirements

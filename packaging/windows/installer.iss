@@ -1,9 +1,9 @@
 ; Inno Setup script for the Windows installer.
-; Build manually: iscc /DAppVersion=0.2.0 packaging\windows\installer.iss
+; Build manually: iscc /DAppVersion=0.3.0 packaging\windows\installer.iss
 ; Installs for the current user only, so no administrator password is needed.
 
 #ifndef AppVersion
-  #define AppVersion "0.2.0"
+  #define AppVersion "0.3.0"
 #endif
 
 [Setup]
