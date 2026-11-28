@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 from ...books.export import export_book
-from ...books.models import Book, Contributor
+from ...books.models import Book, Contributor, isbn13_valid
 from ...books.storage import BookFolder, BookLibrary
 from ..common import Worker, error, info, note, open_folder
 
@@ -45,7 +45,9 @@ class BooksScreen(QWidget):
         self.tabs = QTabWidget()
         self.details = QWidget(); self._build_details()
         self.chapters = QWidget(); self._build_chapters()
+        self.matter = QWidget(); self._build_matter()
         self.tabs.addTab(self.details, "Book details"); self.tabs.addTab(self.chapters, "Chapters")
+        self.tabs.addTab(self.matter, "Front and back matter")
         root.addWidget(self.tabs, 1)
         footer = QHBoxLayout()
         self.export_button = QPushButton("Build book PDF"); self.export_button.clicked.connect(self.export)
@@ -76,6 +78,22 @@ class BooksScreen(QWidget):
         remove = QPushButton("Remove selected"); remove.clicked.connect(lambda: self.contributors.removeRow(self.contributors.currentRow()) if self.contributors.currentRow() >= 0 else None)
         layout.addLayout(form); layout.addWidget(QLabel("Editors, authors and other contributors")); layout.addWidget(self.contributors, 1)
         row=QHBoxLayout(); row.addWidget(add); row.addWidget(remove); save=QPushButton("Save book details"); save.clicked.connect(self.save_details); row.addStretch(); row.addWidget(save); layout.addLayout(row)
+
+    def _build_matter(self):
+        layout = QVBoxLayout(self.matter)
+        self.matter_fields = {}
+        for key, label in (("dedication", "Dedication"), ("epigraph", "Epigraph"),
+                           ("foreword", "Foreword"), ("preface", "Preface"),
+                           ("acknowledgements", "Acknowledgements"), ("introduction", "Introduction"),
+                           ("appendices", "Appendices"), ("glossary", "Glossary"),
+                           ("bibliography", "Consolidated bibliography"), ("index_note", "Index / index material")):
+            layout.addWidget(QLabel(label))
+            editor = QTextEdit(); editor.setMinimumHeight(65)
+            self.matter_fields[key] = editor
+            layout.addWidget(editor, 1 if key in ("foreword", "preface", "introduction", "appendices", "bibliography") else 0)
+        save = QPushButton("Save front and back matter")
+        save.clicked.connect(self.save_matter)
+        layout.addWidget(save)
 
     def _build_chapters(self):
         layout=QVBoxLayout(self.chapters)
@@ -123,6 +141,7 @@ class BooksScreen(QWidget):
         book=self.folder.load()
         for key,field in self.fields.items(): field.setText(str(getattr(book,key)))
         self.year.setValue(book.publication_year); self.copyright_year.setValue(book.copyright_year); self.trim.setCurrentText(book.trim_size)
+        for key, editor in self.matter_fields.items(): editor.setPlainText(getattr(book, key))
         self.contributors.setRowCount(0)
         for c in book.contributors:
             row=self.contributors.rowCount(); self.contributors.insertRow(row)
@@ -139,12 +158,24 @@ class BooksScreen(QWidget):
         if not self.folder:return
         book=self.folder.load()
         for key,field in self.fields.items(): setattr(book,key,field.text().strip())
+        for key in ("isbn_print", "isbn_ebook"):
+            value = getattr(book, key).strip()
+            if value and not isbn13_valid(value):
+                QMessageBox.warning(self, "Invalid ISBN", f"The {key.replace('_', ' ')} must be a valid 13-digit ISBN (check digit included).")
+                return
         book.publication_year=self.year.value(); book.copyright_year=self.copyright_year.value(); book.trim_size=self.trim.currentText()
         book.contributors=[]
         for row in range(self.contributors.rowCount()):
             vals=[self.contributors.item(row,col).text() if self.contributors.item(row,col) else "" for col in range(5)]
             if vals[0].strip(): book.contributors.append(Contributor(name=vals[0],role=vals[1] or "Author",affiliation=vals[2],email=vals[3],orcid=vals[4]))
         self.folder.save(book); self.books.setItemText(self.books.currentIndex(),book.title); info(self,"Book details","Book details saved.")
+
+    def save_matter(self):
+        if not self.folder: return
+        book = self.folder.load()
+        for key, editor in self.matter_fields.items(): setattr(book, key, editor.toPlainText().strip())
+        self.folder.save(book)
+        info(self, "Book matter", "Front and back matter saved.")
 
     def add_chapters(self):
         if not self.folder:return
@@ -176,7 +207,6 @@ class BooksScreen(QWidget):
         row=self.chapter_table.currentRow(); target=row+step
         if row<0 or not 0<=target<self.chapter_table.rowCount():return
         items=[self.chapter_table.takeItem(row,col) for col in range(self.chapter_table.columnCount())]
-        check=self.chapter_table.takeItem(row,0)
         self.chapter_table.removeRow(row); self.chapter_table.insertRow(target)
         for col,item in enumerate(items):
             if item:self.chapter_table.setItem(target,col,item)
