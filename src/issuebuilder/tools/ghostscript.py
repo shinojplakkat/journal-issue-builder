@@ -113,8 +113,12 @@ def make_pdfa2b(source: Path, target: Path, title: str = "Journal issue") -> tup
         if result.returncode != 0 or "PDF/A processing aborted" in transcript \
                 or "may not be a PDF/A file" in transcript or not target.is_file() or target.stat().st_size == 0:
             target.unlink(missing_ok=True)
-            detail = transcript.strip().splitlines()
-            return False, "Ghostscript could not create the PDF/A-2b file: " + (detail[-1] if detail else "unknown error")
+            # Keep the interpreter's explanation. Older Ghostscript releases
+            # print the useful /invalidfileaccess or PDF/A error before the
+            # generic final "Unrecoverable error" line.
+            detail = [line.strip() for line in transcript.splitlines() if line.strip()]
+            summary = "\n".join(detail[-8:])[-1600:] if detail else "unknown error"
+            return False, "Ghostscript could not create the PDF/A-2b file:\n" + summary
         return True, "Created using Ghostscript's strict PDF/A-2b mode. Run veraPDF before relying on conformance."
     except Exception as error:
         target.unlink(missing_ok=True)

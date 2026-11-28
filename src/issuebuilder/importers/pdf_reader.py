@@ -44,14 +44,20 @@ def check_pdf(path: Path) -> PdfReport:
 
     sizes = [round(line.size, 1) for line in lines for _ in range(max(1, len(line.text.split())))]
     report.body_pt = statistics.mode(sizes) if sizes else 0
-    text = " ".join(line.text for line in lines)
-    if has_unmapped_glyph_placeholders(text):
+    report.suggestions = suggest_details(lines, report.body_pt)
+    if has_unmapped_glyph_placeholders(" ".join(line.text for line in lines)):
         report.warnings.append(
-            "This PDF's text encoding cannot be read reliably. Fill in the title, authors and abstract manually."
+            "Some PDF text has an unreadable character mapping. Check the suggested title, authors and abstract."
         )
-        report.suggestions = {"title": "", "authors": [], "abstract": ""}
-    else:
-        report.suggestions = suggest_details(lines, report.body_pt)
+        # An unreadable body or Malayalam passage should not erase a clean title
+        # or author list. Suppress only suggestions that contain placeholder text.
+        for key in ("title", "abstract"):
+            if has_unmapped_glyph_placeholders(report.suggestions.get(key, "")):
+                report.suggestions[key] = ""
+        report.suggestions["authors"] = [
+            author for author in report.suggestions.get("authors", [])
+            if not has_unmapped_glyph_placeholders(author)
+        ]
     return report
 
 
