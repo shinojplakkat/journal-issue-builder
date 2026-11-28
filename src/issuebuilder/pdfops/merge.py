@@ -51,6 +51,19 @@ def assemble(items: list[tuple[Path | None, int]], width_mm: float, height_mm: f
     return out, sources
 
 
+def add_cover_pages(pdf: Pdf, sources: PageSource, front: Path | None, back: Path | None) -> None:
+    """Add optional front and back cover pages to an assembled issue PDF."""
+    if front is not None:
+        pdf.pages.insert(0, sources.open(front).pages[0])
+    if back is not None:
+        pdf.pages.append(sources.open(back).pages[0])
+
+
+def save(pdf: Pdf, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pdf.save(target)
+
+
 def concatenate(files: list[Path], target: Path) -> None:
     out = Pdf.new()
     opened = [Pdf.open(f) for f in files]

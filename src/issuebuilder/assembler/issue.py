@@ -19,10 +19,11 @@ from ..settings.models import Article, IssueSettings, JournalSettings
 from .blank_pages import NONE, Element, balance
 from .numbering import to_roman
 
-FRONT_PARTS = [("title_page", "Title page"), ("imprint", "Copyright and imprint"),
+FRONT_PARTS = [("inside_front_cover", "Inside front cover"), ("title_page", "Title page"),
+               ("imprint", "Copyright and imprint"),
                ("masthead", "Editorial board"), ("contents", "Contents")]
 BACK_PARTS = [("author_index", "Author index"), ("aims_scope", "Aims and scope"),
-              ("notes_for_authors", "Notes for authors")]
+              ("notes_for_authors", "Notes for authors"), ("inside_back_cover", "Inside back cover")]
 
 
 @dataclass
@@ -96,6 +97,10 @@ def make_plan(journal_folder: JournalFolder, issue_folder: IssueFolder,
     logo = journal_folder.logo_path(journal)
     fixed: dict[str, fm.Page] = {}
     on = layout.parts_on
+    for name, content in (("inside_front_cover", settings.inside_front_cover),
+                          ("inside_back_cover", settings.inside_back_cover)):
+        if on.get(name, False) and content.strip():
+            fixed[name] = fm.cover_matter_page(layout, content)
     if on.get("title_page", True):
         fixed["title_page"] = fm.title_page(journal, settings, layout, logo)
     if on.get("imprint", True):

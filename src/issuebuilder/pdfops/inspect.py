@@ -6,6 +6,7 @@ structure and pdfplumber reads text with its size and position.
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -119,3 +120,83 @@ def image_resolutions(path: Path, max_pages: int | None = None) -> list[tuple[in
             if lowest is not None:
                 found.append((index + 1, round(lowest)))
     return found
+
+
+def unembedded_fonts(path: Path) -> list[str]:
+    """Return page and font names that have no embedded font program.
+
+    Type 3 fonts contain their glyph programs as PDF drawing commands, and the
+    PDF standard's built-in base fonts do not require separate font files.
+    """
+    standard_fonts = {
+        "Courier", "Courier-Bold", "Courier-Oblique", "Courier-BoldOblique",
+        "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-BoldOblique",
+        "Times-Roman", "Times-Bold", "Times-Italic", "Times-BoldItalic", "Symbol", "ZapfDingbats",
+    }
+    missing: set[str] = set()
+    with pikepdf.open(path) as pdf:
+        for page_number, page in enumerate(pdf.pages, 1):
+            visited: set[tuple[int, int] | int] = set()
+
+            def key_for(obj):
+                try:
+                    return tuple(obj.objgen)
+                except (AttributeError, TypeError):
+                    return id(obj)
+
+            def check_font(font) -> None:
+                subtype = str(font.get("/Subtype", ""))
+                if subtype == "/Type3":
+                    return
+                descendants = font.get("/DescendantFonts", [])
+                faces = list(descendants) or [font]
+                for face in faces:
+                    descriptor = face.get("/FontDescriptor")
+                    if descriptor and any(name in descriptor for name in ("/FontFile", "/FontFile2", "/FontFile3")):
+                        continue
+                    base = str(face.get("/BaseFont", font.get("/BaseFont", "(unknown)"))).lstrip("/")
+                    if "+" in base and len(base.split("+", 1)[0]) == 6:
+                        base = base.split("+", 1)[1]
+                    if base not in standard_fonts:
+                        missing.add(f"page {page_number}: {base}")
+
+            def walk(resources) -> None:
+                if resources is None:
+                    return
+                key = key_for(resources)
+                if key in visited:
+                    return
+                visited.add(key)
+                for font in resources.get("/Font", {}).values():
+                    check_font(font)
+                for category in ("/XObject", "/Pattern"):
+                    for child in resources.get(category, {}).values():
+                        walk(child.get("/Resources"))
+
+            walk(page.obj.get("/Resources"))
+    return sorted(missing)
+
+
+def pdfa2b_structure(path: Path) -> tuple[bool, str]:
+    """Check that a PDF has PDF/A-2 metadata and an output intent.
+
+    This is a structural sanity check, not a substitute for veraPDF.
+    """
+    with pikepdf.open(path) as pdf:
+        intents = pdf.Root.get("/OutputIntents", [])
+        if not intents:
+            return False, "PDF catalog has no output intent."
+        if not any(intent.get("/DestOutputProfile") for intent in intents):
+            return False, "PDF output intent has no destination profile."
+        stream = pdf.Root.get("/Metadata")
+        if stream is None:
+            return False, "PDF has no XMP metadata stream."
+        try:
+            root = ET.fromstring(stream.read_bytes())
+        except ET.ParseError:
+            return False, "PDF XMP metadata could not be parsed."
+        pdfaid = "{http://www.aiim.org/pdfa/ns/id/}"
+        fields = {key: value for element in root.iter() for key, value in element.attrib.items()}
+        if fields.get(pdfaid + "part") != "2" or fields.get(pdfaid + "conformance") != "B":
+            return False, "PDF XMP metadata does not declare PDF/A-2b."
+    return True, "PDF contains PDF/A-2b metadata and an output intent; run veraPDF for conformance validation."

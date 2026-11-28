@@ -245,7 +245,8 @@ class IssueScreen(QWidget):
         buttons = QHBoxLayout()
         for text, slot in (("Add files…", self.add_files), ("Edit details…", self.edit_article),
                            ("Move up", lambda: self.move(-1)), ("Move down", lambda: self.move(1)),
-                           ("Remove", self.remove), ("Re-analyse", self.reanalyse)):
+                           ("Remove", self.remove), ("Re-analyse", self.reanalyse),
+                           ("Inside covers…", self.edit_inside_covers)):
             button = QPushButton(text)
             button.clicked.connect(slot)
             buttons.addWidget(button)
@@ -321,6 +322,32 @@ class IssueScreen(QWidget):
             self.number.setValue(s.number)
         issue.save(s)
         self.state.data_changed.emit()
+
+    def edit_inside_covers(self) -> None:
+        if self.state.issue is None:
+            return
+        settings = self.state.issue.load()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Inside cover content")
+        dialog.resize(620, 520)
+        layout = QVBoxLayout(dialog)
+        editors = {}
+        for key, label in (("inside_front_cover", "Inside front cover (notes or advertisement)"),
+                           ("inside_back_cover", "Inside back cover (notes or advertisement)")):
+            layout.addWidget(QLabel(label))
+            editor = QPlainTextEdit(getattr(settings, key))
+            editors[key] = editor
+            layout.addWidget(editor, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                                   QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec():
+            for key, editor in editors.items():
+                setattr(settings, key, editor.toPlainText().strip())
+            self.state.issue.save(settings)
+            self.state.data_changed.emit()
 
     # ------------------------------------------------------------------ actions
 

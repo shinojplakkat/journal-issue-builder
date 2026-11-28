@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import io
+import re
+from datetime import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QPixmap
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLabel, QPushButton,
-                               QScrollArea, QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox, QHBoxLayout,
+                               QHeaderView, QLabel, QPushButton, QPlainTextEdit, QScrollArea, QSplitter,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from ...analyzer.blocks import fill_details
 from ...analyzer.rules import LABELS, LOW_CONFIDENCE
 from ...builder.article import article_pdf_path, build_articles
 from ...importers.convert import clean_word_path
+from ...settings.models import Block
 from ..common import AppState, Worker, combo, error, info, note, set_combo
-from .issue import STATUS_LABELS
+from .issue import ArticleDialog, STATUS_LABELS
 
 LABEL_NAMES = {
     "title": "Title", "subtitle": "Subtitle", "author": "Author", "orcid": "ORCID", "email": "Email",
@@ -41,16 +45,24 @@ class ReviewScreen(QWidget):
         self.article = None
         self.worker: Worker | None = None
         self.loading = False
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.setInterval(600)
+        self.preview_timer.timeout.connect(self.update_preview)
 
         self.picker = QComboBox()
         self.picker.currentIndexChanged.connect(self.pick)
         self.status = combo(list(STATUS_LABELS.items()))
         self.status.currentIndexChanged.connect(self.status_changed)
+        self.details_button = QPushButton("Edit title and authors…")
+        self.details_button.setToolTip("Correct the contents-page details, including for PDF articles.")
+        self.details_button.clicked.connect(self.edit_article_details)
         top = QHBoxLayout()
         top.addWidget(QLabel("Article"))
         top.addWidget(self.picker, 1)
         top.addWidget(QLabel("Status"))
         top.addWidget(self.status)
+        top.addWidget(self.details_button)
 
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["Label", "Sure", "Text"])
@@ -67,10 +79,19 @@ class ReviewScreen(QWidget):
         apply = QPushButton("Apply labels to details")
         apply.setToolTip("Fill title, authors, abstract and keywords from the labels")
         apply.clicked.connect(self.apply_labels)
+        merge = QPushButton("Merge selected blocks")
+        merge.clicked.connect(self.merge_selected)
+        edit = QPushButton("Edit / split selected…")
+        edit.clicked.connect(self.edit_selected)
+        history = QPushButton("Correction history")
+        history.clicked.connect(self.show_correction_history)
         actions = QHBoxLayout()
         actions.addWidget(self.quick)
         actions.addWidget(set_selected)
+        actions.addWidget(merge)
+        actions.addWidget(edit)
         actions.addStretch()
+        actions.addWidget(history)
         actions.addWidget(apply)
 
         left = QWidget()
@@ -134,21 +155,35 @@ class ReviewScreen(QWidget):
             return
         article_id = self.picker.currentData()
         self.clear_preview()
+        self.preview_timer.stop()
         if article_id is None or self.state.issue is None:
             self.article = None
             self.table.setRowCount(0)
+            self.details_button.setEnabled(False)
             return
         self.article = self.state.issue.load_article(article_id)
+        self.details_button.setEnabled(self.article is not None)
         self.loading = True
         set_combo(self.status, self.article.review_status)
         self.loading = False
         self.fill_table()
         if self.article.source_kind == "pdf":
             self.preview_info.setText("PDF article: it is inserted as sent. Check its title and authors with "
-                                      "'Edit details' on the Issue screen.")
+                                      "'Edit title and authors'. Text extracted from PDF files, especially "
+                                      "some Malayalam PDFs, may be unreadable.")
+            self.table.setEnabled(False)
+
+    def edit_article_details(self) -> None:
+        if self.article is None or self.state.issue is None:
+            return
+        dialog = ArticleDialog(self, self.article)
+        if dialog.exec():
+            self.state.issue.save_article(dialog.apply())
+            self.state.data_changed.emit()
 
     def fill_table(self) -> None:
         self.loading = True
+        self.table.setEnabled(self.article.source_kind == "word")
         self.table.setRowCount(0)
         for row, block in enumerate(self.article.blocks):
             self.table.insertRow(row)
@@ -174,13 +209,17 @@ class ReviewScreen(QWidget):
         if self.loading or self.article is None:
             return
         block = self.article.blocks[row]
+        previous = block.label
         block.label = label
         block.confirmed = True
+        if previous != label:
+            self._record_correction("Changed label", f"{previous} → {label}; {block.text[:120]}")
         self.save()
         colour = QBrush(confidence_colour(block.confidence, True))
         for col in (1, 2):
             self.table.item(row, col).setBackground(colour)
         self.table.item(row, 1).setText("✓")
+        self.preview_timer.start()
 
     def set_selected(self) -> None:
         if self.article is None:
@@ -190,6 +229,95 @@ class ReviewScreen(QWidget):
             box = self.table.cellWidget(row, 0)
             set_combo(box, label)  # triggers label_changed
         self.save()
+
+    def _record_correction(self, action: str, details: str) -> None:
+        if self.article is None:
+            return
+        self.article.correction_log.append({
+            "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "action": action,
+            "details": details,
+        })
+
+    def merge_selected(self) -> None:
+        if self.article is None or self.article.source_kind != "word" or self.article.mode != "journal":
+            return
+        rows = sorted({index.row() for index in self.table.selectedIndexes()})
+        if len(rows) < 2 or rows != list(range(rows[0], rows[-1] + 1)):
+            info(self, "Merge blocks", "Select two or more adjacent blocks from a Word article.")
+            return
+        selected = self.article.blocks[rows[0]:rows[-1] + 1]
+        source_indices = []
+        for block in selected:
+            for index in (block.source_indices or [block.i]):
+                if index not in source_indices:
+                    source_indices.append(index)
+        merged = Block(i=selected[0].i, text="\n\n".join(block.text for block in selected),
+                       label=selected[0].label, confidence=min(block.confidence for block in selected),
+                       confirmed=True, source_indices=source_indices)
+        self._record_correction("Merged blocks", f"{len(selected)} blocks into: {merged.text[:160]}")
+        self.article.blocks[rows[0]:rows[-1] + 1] = [merged]
+        self.save()
+        self.fill_table()
+        self.table.selectRow(rows[0])
+        self.preview_timer.start()
+
+    def edit_selected(self) -> None:
+        if self.article is None or self.article.source_kind != "word" or self.article.mode != "journal":
+            return
+        rows = sorted({index.row() for index in self.table.selectedIndexes()})
+        if len(rows) != 1:
+            info(self, "Edit block", "Select one block to edit or split.")
+            return
+        row = rows[0]
+        block = self.article.blocks[row]
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit or split block")
+        dialog.resize(600, 400)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("Edit this text. Separate paragraphs with a blank line to split the block.\n"
+                                "Formatting inside this edited paragraph is replaced with the journal style."))
+        editor = QPlainTextEdit(block.text)
+        layout.addWidget(editor, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save |
+                                   QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if not dialog.exec():
+            return
+        parts = [part.strip() for part in re.split(r"\n\s*\n", editor.toPlainText()) if part.strip()]
+        if not parts:
+            return
+        indices = block.source_indices or [block.i]
+        replacements = [Block(i=block.i, text=part, label=block.label, confidence=block.confidence,
+                              confirmed=True, source_indices=list(indices)) for part in parts]
+        action = "Split block" if len(parts) > 1 else "Edited block"
+        self._record_correction(action, f"{block.text[:100]} → {' | '.join(parts)[:180]}")
+        self.article.blocks[row:row + 1] = replacements
+        self.save()
+        self.fill_table()
+        self.table.selectRow(row)
+        self.preview_timer.start()
+
+    def show_correction_history(self) -> None:
+        if self.article is None:
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Correction history")
+        dialog.resize(640, 420)
+        layout = QVBoxLayout(dialog)
+        history = QPlainTextEdit()
+        history.setReadOnly(True)
+        lines = [f"{item.get('time', '')}  {item.get('action', '')}\n{item.get('details', '')}"
+                 for item in self.article.correction_log]
+        history.setPlainText("\n\n".join(lines) or "No corrections recorded yet.")
+        layout.addWidget(history, 1)
+        close = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close.rejected.connect(dialog.reject)
+        close.accepted.connect(dialog.accept)
+        layout.addWidget(close)
+        dialog.exec()
 
     def status_changed(self) -> None:
         if self.loading or self.article is None:
@@ -247,7 +375,7 @@ class ReviewScreen(QWidget):
     def show_pages(self, images: list[bytes]) -> None:
         self.preview_button.setEnabled(True)
         self.clear_preview()
-        self.preview_info.setText(f"{len(images)} page(s). Labels changed? Press 'Update preview' again.")
+        self.preview_info.setText(f"Preview updated: {len(images)} page(s).")
         for n, data in enumerate(images, 1):
             pixmap = QPixmap()
             pixmap.loadFromData(data, "PNG")

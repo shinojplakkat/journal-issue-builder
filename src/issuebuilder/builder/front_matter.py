@@ -20,6 +20,7 @@ from docx.shared import Mm, Pt, RGBColor
 
 from ..settings.defaults import PAPER_SIZES_MM
 from ..settings.models import Article, IssueSettings, JournalSettings, LayoutSettings
+from ..settings.script_fonts import script_font, scripts_in
 from ..tools import libreoffice
 from .word_layout import set_run_font, set_style_font, setup_pages, text_width_mm
 
@@ -67,7 +68,11 @@ class Page:
     def run(self, p, text: str, size: float | None = None, bold: bool = False, italic: bool = False,
             font: str | None = None, colour: RGBColor | None = None):
         r = p.add_run(text)
-        set_run_font(r, font or self.layout.body_font, size or self.layout.body_pt, self.layout.indic_font)
+        face = font or self.layout.body_font
+        scripts = scripts_in(text)
+        complex_font = script_font(sorted(scripts)[0], self.layout.indic_font, self.layout.script_fonts,
+                                    headings=face == self.layout.heading_font) if scripts else None
+        set_run_font(r, face, size or self.layout.body_pt, self.layout.indic_font, complex_font)
         r.font.bold = bold
         r.font.italic = italic
         if colour is not None:
@@ -157,6 +162,11 @@ def imprint_page(journal: JournalSettings, issue: IssueSettings, layout: LayoutS
 
 def masthead_page(journal: JournalSettings, layout: LayoutSettings) -> Page:
     page = Page(layout)
+    page.para(journal.title, size=layout.body_pt, bold=True, after=3)
+    if journal.print_issn or journal.e_issn:
+        page.para(_issn_line(journal), size=layout.abstract_pt, after=2)
+    if journal.website:
+        page.para(journal.website, size=layout.abstract_pt, after=8)
     page.para("Editorial Board", size=layout.h1_pt + 1, bold=True, font=layout.heading_font, after=12)
     if journal.editor_in_chief:
         page.para("Editor-in-Chief", size=layout.abstract_pt, bold=True, before=4)
@@ -226,6 +236,15 @@ def text_page(layout: LayoutSettings, heading: str, text: str) -> Page:
     return page
 
 
+def cover_matter_page(layout: LayoutSettings, text: str) -> Page:
+    """Inside-cover notes or advertising supplied by the journal editor."""
+    page = Page(layout)
+    for line in text.splitlines():
+        if line.strip():
+            page.para(line.strip(), size=layout.body_pt, align=JUSTIFY, after=6)
+    return page
+
+
 def offprint_details_page(journal: JournalSettings, issue: IssueSettings, layout: LayoutSettings,
                           article: Article, pages: str, how_to_cite: str) -> Page:
     """Publication details for a single-article offprint (blueprint M12)."""
@@ -235,6 +254,19 @@ def offprint_details_page(journal: JournalSettings, issue: IssueSettings, layout
     page.para(journal.title, size=layout.body_pt + 1, bold=True, after=2)
     page.para(_issue_line(issue), size=small, after=2)
     page.para(_issn_line(journal), size=small, after=12)
+    if journal.editor_in_chief:
+        page.para("Editor-in-Chief", size=small, bold=True, after=1)
+        page.para(journal.editor_in_chief, size=small - 1, after=3)
+    if journal.editors:
+        page.para("Editors", size=small, bold=True, after=1)
+        for editor in journal.editors:
+            page.para(editor, size=small - 1, after=1)
+    if journal.board:
+        page.para("Editorial Board", size=small, bold=True, before=2, after=3)
+        for member in journal.board:
+            detail = ", ".join(x for x in (member.role, member.institution) if x)
+            page.para(member.name + (f" — {detail}" if detail else ""), size=small - 1, after=1)
+        page.para("", size=small, after=4)
     page.para(article.title, size=layout.body_pt, bold=True, after=2)
     if article.author_names:
         page.para(article.author_names, size=small, italic=True, after=2)

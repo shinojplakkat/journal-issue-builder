@@ -30,7 +30,7 @@ def _cache_key(article: Article, layout: LayoutSettings) -> str:
     data = {
         "hash": article.source_hash,
         "mode": article.mode,
-        "blocks": [(b.i, b.label) for b in article.blocks],
+        "blocks": [(b.i, b.label, b.text, b.source_indices) for b in article.blocks],
         "dates": article.dates,
         "doi": article.doi,
         "layout": layout.to_dict(),

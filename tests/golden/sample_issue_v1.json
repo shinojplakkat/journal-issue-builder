@@ -1,0 +1,21 @@
+{
+  "description": "Baseline generated from samples/make_samples.py; synthetic content only.",
+  "pdf_sha256": "f37b8c994bf5077c06383f2d76185f1bba65dd83a5be1aa4a69c6f95f228275c",
+  "electronic_pages": 31,
+  "contents_pdf_page": 5,
+  "link_annotations": 9,
+  "article_start_pages": {
+    "article_archive.odt": 1,
+    "article_lineage.docx": 9,
+    "article_lineage.pdf": 15,
+    "article_rhythm.docx": 19,
+    "review_book.docx": 25
+  },
+  "contents_entries": [
+    ["Archiving the Stage: Manuscripts, Notation and Practice", 1],
+    ["Teaching Lineages: A Study of the Gurukula Method", 9],
+    ["Teaching Lineages: A Study of the Gurukula Method", 15],
+    ["Rhythm and Memory in Classical Performance Training", 19],
+    ["Book Review: Movement and Meaning", 25]
+  ]
+}

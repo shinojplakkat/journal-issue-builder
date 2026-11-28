@@ -19,6 +19,8 @@ from ..cover import wrap
 from ..settings.defaults import PAPER_SIZES_MM
 from ..settings.load_save import IssueFolder, JournalFolder
 from ..settings.models import GLUE
+from ..tools import ghostscript
+from ..pdfops import inspect, pdfa
 from . import calibration, electronic, offprint, printing
 
 
@@ -71,6 +73,9 @@ def run_export(journal_folder: JournalFolder, issue_folder: IssueFolder,
             result.ok = False
             result.notes.append("No article could be laid out.")
             return result
+        # Recheck now that every article PDF exists, so raster images in Word
+        # submissions are included in the print-resolution report.
+        result.findings = check_issue(journal_folder, issue_folder)
         say("Making covers")
         covers = wrap.cover_pages(journal_folder, issue_folder, journal, issue)
 
@@ -81,6 +86,28 @@ def run_export(journal_folder: JournalFolder, issue_folder: IssueFolder,
                 plan, journal, issue, covers if options.include_covers_in_electronic else None, target,
                 keep_blanks=options.keep_blank_pages, proof=options.proof_watermark)
             result.files.append(target)
+            if options.pdfa_electronic:
+                say("Making the PDF/A-2b copy")
+                pdfa_target = out / f"{name}_electronic_issue_pdfa-2b.pdf"
+                ok, message = ghostscript.make_pdfa2b(
+                    target, pdfa_target, title=f"{journal.title}, {issue.label}")
+                result.notes.append(message)
+                if ok:
+                    try:
+                        restored = pdfa.restore_links(target, pdfa_target)
+                        if restored:
+                            result.notes.append(f"Preserved {restored} clickable link(s) in the PDF/A copy.")
+                        valid, detail = inspect.pdfa2b_structure(pdfa_target)
+                    except Exception as error:
+                        valid, detail = False, f"Could not safely preserve/check PDF links: {error}"
+                    if valid:
+                        result.files.append(pdfa_target)
+                        result.notes.append(detail)
+                    else:
+                        pdfa_target.unlink(missing_ok=True)
+                        result.notes.append("PDF/A output failed its structural check: " + detail)
+        elif options.pdfa_electronic:
+            result.notes.append("PDF/A was selected, but the electronic issue PDF is switched off.")
         if options.electronic_articles:
             say("Making the article PDFs")
             result.files += electronic.electronic_articles(plan, journal, issue, out / "articles",
@@ -110,9 +137,13 @@ def run_export(journal_folder: JournalFolder, issue_folder: IssueFolder,
             say("Making calibration sheets")
             sheet = printing.SHEET_FOR_BOOKLET.get(issue.layout.page_size, "A4") if mode != GLUE \
                 else issue.layout.page_size
-            for paper, landscape in {(sheet, mode != GLUE), ("A3", True)}:
+            for paper in ("A5", "A4", "A3"):
+                landscape = paper == sheet and mode != GLUE
                 target = print_dir / f"calibration_{paper}{'_landscape' if landscape else ''}.pdf"
-                calibration.calibration_sheet(paper, target, issue.printing.unprintable_edge_mm, landscape)
+                profile = issue.printing.paper_profiles.get(paper, {})
+                calibration.calibration_sheet(
+                    paper, target, issue.printing.unprintable_edge_mm, landscape,
+                    profile.get("duplex", True), profile.get("flip_edge", "long" if paper == "A5" else "short"))
                 result.files.append(target)
 
         if offprints:
@@ -122,6 +153,20 @@ def run_export(journal_folder: JournalFolder, issue_folder: IssueFolder,
                                                    cover_line=issue.cover.offprint_line)
             result.files += files
             result.notes += notes
+        for pdf_path in result.files:
+            if pdf_path.suffix.lower() != ".pdf" or not pdf_path.is_file():
+                continue
+            try:
+                unembedded = inspect.unembedded_fonts(pdf_path)
+                if unembedded:
+                    result.findings.append(Finding(
+                        "warning", pdf_path.name,
+                        "These fonts are not embedded: " + "; ".join(unembedded[:12])
+                        + ("; …" if len(unembedded) > 12 else ""),
+                    ))
+            except Exception as error:
+                result.findings.append(Finding("warning", pdf_path.name,
+                                               f"Could not inspect embedded fonts: {error}"))
     except Exception as error:
         result.ok = False
         result.notes.append(f"Export failed: {error}")

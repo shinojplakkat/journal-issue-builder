@@ -53,3 +53,9 @@ def shift_page(page: pikepdf.Page, dx_pt: float) -> None:
     page.contents_coalesce()
     stream = page.obj.Contents
     stream.write(b"q 1 0 0 1 %.3f 0 cm\n" % dx_pt + stream.read_bytes() + b"\nQ\n")
+
+
+def shift_pdf_for_gutter(pdf: Pdf, gutter_mm: float) -> None:
+    """Shift odd and even pages away from a shared binding gutter."""
+    for number, page in enumerate(pdf.pages, 1):
+        shift_page(page, mm(gutter_mm / 2) * (1 if number % 2 == 1 else -1))

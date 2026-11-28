@@ -5,7 +5,6 @@ import re
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-import pikepdf
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
 from reportlab.lib.pagesizes import A5, A4, landscape
@@ -15,6 +14,7 @@ from reportlab.platypus import (BaseDocTemplate, Frame, PageBreak, PageTemplate,
                                 Spacer, Table, TableStyle)
 
 from ..pdfops.merge import concatenate
+from ..pdfops.bookmarks import update_metadata_file
 from ..tools import libreoffice
 from .models import Book
 from .storage import BookFolder
@@ -152,11 +152,6 @@ def export_book(folder: BookFolder, progress=None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     say("Combining pages into the book PDF")
     concatenate(parts, target)
-    with pikepdf.open(target, allow_overwriting_input=True) as pdf:
-        with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
-            meta["/Title"] = book.title
-            meta["/Author"] = ", ".join(c.name for c in book.contributors if c.name)
-            meta["/Subject"] = book.subject
-            meta["/Keywords"] = ", ".join([book.language, book.subject, "ISBN " + book.isbn_print])
-        pdf.save(target)
+    update_metadata_file(target, book.title, ", ".join(c.name for c in book.contributors if c.name),
+                         book.subject, ", ".join([book.language, book.subject, "ISBN " + book.isbn_print]))
     return target

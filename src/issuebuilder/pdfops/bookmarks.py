@@ -75,4 +75,14 @@ def set_metadata(pdf: Pdf, title: str, author: str, subject: str, keywords: str)
     pdf.Root.PageMode = Name.UseOutlines
 
 
+def update_metadata_file(path, title: str, author: str, subject: str, keywords: str) -> None:
+    """Update document metadata at the PDF boundary and save the file."""
+    from pathlib import Path
+
+    target = Path(path)
+    with Pdf.open(target, allow_overwriting_input=True) as pdf:
+        set_metadata(pdf, title, author, subject, keywords)
+        pdf.save(target)
+
+
 __all__ = ["add_bookmarks", "set_page_labels", "add_link", "set_metadata", "pikepdf"]

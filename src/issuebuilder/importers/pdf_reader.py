@@ -19,6 +19,7 @@ class PdfReport:
     height_mm: float = 0
     body_pt: float = 0                 # most common text size
     suggestions: dict = field(default_factory=dict)  # title, authors, abstract
+    warnings: list[str] = field(default_factory=list)
 
 
 def check_pdf(path: Path) -> PdfReport:
@@ -43,7 +44,14 @@ def check_pdf(path: Path) -> PdfReport:
 
     sizes = [round(line.size, 1) for line in lines for _ in range(max(1, len(line.text.split())))]
     report.body_pt = statistics.mode(sizes) if sizes else 0
-    report.suggestions = suggest_details(lines, report.body_pt)
+    text = " ".join(line.text for line in lines)
+    if has_unmapped_glyph_placeholders(text):
+        report.warnings.append(
+            "This PDF's text encoding cannot be read reliably. Fill in the title, authors and abstract manually."
+        )
+        report.suggestions = {"title": "", "authors": [], "abstract": ""}
+    else:
+        report.suggestions = suggest_details(lines, report.body_pt)
     return report
 
 
@@ -81,3 +89,8 @@ def suggest_details(lines, body_pt: float) -> dict:
             suggestions["abstract"] = " ".join(parts).strip()
             break
     return suggestions
+
+
+def has_unmapped_glyph_placeholders(text: str) -> bool:
+    """Detect the explicit CID placeholders some PDF text maps expose instead of characters."""
+    return bool(re.search(r"\(\s*cid\s*:\s*\d+\s*\)|\ufffd", text, re.IGNORECASE))
