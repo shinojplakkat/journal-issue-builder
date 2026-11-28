@@ -99,7 +99,10 @@ class Book(Record):
 
 def isbn13_valid(value: str) -> bool:
     """Return True for a valid ISBN-13 (hyphens/spaces are ignored)."""
-    digits = "".join(ch for ch in value if ch.isdigit())
+    compact = value.replace("-", "").replace(" ", "")
+    if not compact.isdigit():
+        return False
+    digits = compact
     if len(digits) != 13:
         return False
     total = sum(int(ch) * (1 if i % 2 == 0 else 3) for i, ch in enumerate(digits[:12]))
