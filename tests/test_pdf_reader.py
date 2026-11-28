@@ -35,4 +35,3 @@ def test_unmapped_glyphs_in_body_keep_clean_metadata_suggestions(monkeypatch, tm
     assert report.suggestions["title"] == "A Clear Article Title"
     assert report.suggestions["authors"] == ["Author Name"]
     assert report.warnings
-35bc45c8054ae4c0d5cb8c2d25fe7e3f7e25fce7

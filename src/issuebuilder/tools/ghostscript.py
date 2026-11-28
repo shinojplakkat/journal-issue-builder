@@ -7,6 +7,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import pikepdf
+
 from .external import ExternalTool
 
 GHOSTSCRIPT = ExternalTool(
@@ -98,16 +100,27 @@ def make_pdfa2b(source: Path, target: Path, title: str = "Journal issue") -> tup
             def_file = work / "PDFA_def.ps"
             def_file.write_text(script, encoding="latin-1")
             plain_title = title.replace("\r", " ").replace("\n", " ")
-            title_bytes = b"\xfe\xff" + plain_title.encode("utf-16-be")
+            # Ghostscript 9.55 cannot write all Unicode docinfo strings into
+            # XMP. Use a harmless ASCII placeholder during conversion, then
+            # replace it in synchronized XMP and DocumentInfo metadata below.
+            gs_title = plain_title.encode("ascii", errors="replace").decode("ascii")
+            title_bytes = gs_title.encode("ascii")
             safe_title = "".join(f"\\{byte:03o}" for byte in title_bytes)
             metadata_file = work / "PDF_metadata.ps"
             metadata_file.write_text(f"[ /Title ({safe_title}) /DOCINFO pdfmark\n", encoding="latin-1")
+            pdfa_source = work / "pdfa-input.pdf"
+            with pikepdf.open(source) as pdf:
+                for page in pdf.pages:
+                    for annotation in page.obj.get("/Annots", []):
+                        if annotation.get("/Subtype") != "/Popup":
+                            annotation["/F"] = int(annotation.get("/F", 0)) | 4
+                pdf.save(pdfa_source)
             result = GHOSTSCRIPT.run([
                 "-dPDFA=2", "-dBATCH", "-dNOPAUSE", "-dSAFER",
                 "-dPDFACompatibilityPolicy=2", "-sDEVICE=pdfwrite",
                 "-sColorConversionStrategy=RGB", f"-sOutputFile={target.resolve()}",
                 f"--permit-file-read={profile.resolve()}", "-c", "/PreserveAnnotTypes [/Link] def",
-                "-f", str(def_file), str(source.resolve()), str(metadata_file),
+                "-f", str(def_file), str(pdfa_source.resolve()), str(metadata_file),
             ], timeout=900, cwd=work)
         transcript = result.stdout + "\n" + result.stderr
         if result.returncode != 0 or "PDF/A processing aborted" in transcript \
@@ -119,6 +132,15 @@ def make_pdfa2b(source: Path, target: Path, title: str = "Journal issue") -> tup
             detail = [line.strip() for line in transcript.splitlines() if line.strip()]
             summary = "\n".join(detail[-8:])[-1600:] if detail else "unknown error"
             return False, "Ghostscript could not create the PDF/A-2b file:\n" + summary
+        metadata_target = target.with_name(target.stem + ".metadata.tmp.pdf")
+        try:
+            with pikepdf.open(target) as pdf:
+                with pdf.open_metadata(set_pikepdf_as_editor=False) as metadata:
+                    metadata["dc:title"] = plain_title
+                pdf.save(metadata_target)
+            metadata_target.replace(target)
+        finally:
+            metadata_target.unlink(missing_ok=True)
         return True, "Created using Ghostscript's strict PDF/A-2b mode. Run veraPDF before relying on conformance."
     except Exception as error:
         target.unlink(missing_ok=True)
