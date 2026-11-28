@@ -112,7 +112,8 @@ class LayoutSettings(Record):
     page_size: str = "A5"
     body_font: str = "Liberation Serif"      # Times-like, installed with LibreOffice
     heading_font: str = "Liberation Sans"    # Arial-like
-    indic_font: str = "Noto Serif Malayalam"
+    indic_font: str = "Manjari"
+    script_fonts: dict[str, str] = field(default_factory=dict)
     body_pt: float = 11
     line_pt: float = 14
     title_pt: float = 15
@@ -141,12 +142,14 @@ class LayoutSettings(Record):
     blank_page_text: bool = False     # "This page intentionally left blank"
     # Which parts appear, and on which side they start (M7)
     parts_on: dict[str, bool] = field(default_factory=lambda: {
-        "title_page": True, "imprint": True, "masthead": True, "contents": True,
+        "inside_front_cover": False, "title_page": True, "imprint": True, "masthead": True, "contents": True,
         "aims_scope": False, "notes_for_authors": False,
+        "inside_back_cover": False,
     })
     starts_on: dict[str, str] = field(default_factory=lambda: {
-        "title_page": RIGHT, "imprint": LEFT, "masthead": RIGHT, "contents": RIGHT,
+        "inside_front_cover": LEFT, "title_page": RIGHT, "imprint": LEFT, "masthead": RIGHT, "contents": RIGHT,
         "article": RIGHT, "aims_scope": RIGHT, "notes_for_authors": RIGHT,
+        "inside_back_cover": LEFT,
     })
 
     @classmethod
@@ -176,12 +179,17 @@ class PrintSettings(Record):
     measured_stack_mm: float = 0       # 0 = not measured, use paper thickness
     stapled_page_warning: int = 60
     crop_marks: bool = True
+    paper_profiles: dict = field(default_factory=dict)
 
 
 @dataclass
 class CoverSettings(Record):
     front_image: str = ""          # file inside the issue's assets folder
     back_image: str = ""           # empty = generated from journal details
+    front_background: str = "#17324d"
+    back_background: str = "#f2eee5"
+    front_pattern: str = "solid"
+    back_pattern: str = "solid"
     spine_text: str = ""           # empty = automatic (short title, volume, issue, year)
     offprint_line: bool = True
 
@@ -190,6 +198,7 @@ class CoverSettings(Record):
 class ExportSettings(Record):
     electronic_issue: bool = True
     electronic_articles: bool = True
+    pdfa_electronic: bool = False
     keep_blank_pages: bool = False
     include_covers_in_electronic: bool = True
     print_interior: bool = True
@@ -208,6 +217,8 @@ class IssueSettings(Record):
     month: str = "January"
     year: int = 2027
     title: str = ""                # optional special-issue title
+    inside_front_cover: str = ""   # optional notes or advertisement
+    inside_back_cover: str = ""    # optional notes or advertisement
     article_order: list[str] = field(default_factory=list)
     layout: LayoutSettings = field(default_factory=LayoutSettings)
     printing: PrintSettings = field(default_factory=PrintSettings)
@@ -243,6 +254,7 @@ class Block(Record):
     label: str = "body"
     confidence: float = 0.5
     confirmed: bool = False
+    source_indices: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -265,6 +277,7 @@ class Article(Record):
     dates: dict[str, str] = field(default_factory=lambda: {"received": "", "accepted": "", "published": ""})
     doi: str = ""
     blocks: list[Block] = field(default_factory=list)
+    correction_log: list[dict[str, str]] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)       # tables, images, footnotes ...
     warnings: list[str] = field(default_factory=list)
     review_status: str = "needs_review"  # needs_review, reviewed, keep_original

@@ -23,7 +23,8 @@ def _mm(v: float) -> float:
     return v * PT_PER_MM
 
 
-def calibration_sheet(paper: str, target: Path, unprintable_edge_mm: float = 5, landscape: bool = False) -> Path:
+def calibration_sheet(paper: str, target: Path, unprintable_edge_mm: float = 5, landscape: bool = False,
+                      duplex: bool = True, flip_edge: str = "short") -> Path:
     register_fonts()
     w, h = PAPER_SIZES_MM[paper]
     if landscape:
@@ -41,8 +42,9 @@ def calibration_sheet(paper: str, target: Path, unprintable_edge_mm: float = 5, 
         c.drawCentredString(_mm(w / 2), _mm(h - edge - 12), f"Calibration sheet {paper}"
                             f"{' landscape' if landscape else ''} — {side}")
         c.setFont(SANS, 8)
+        mode = f"duplex, flip {flip_edge} edge" if duplex else "single-sided; print each page separately"
         c.drawCentredString(_mm(w / 2), _mm(h - edge - 18),
-                            f"Dashed frame = {edge:g} mm unprintable edge. Print at 100% (Actual size), double-sided.")
+                            f"Dashed frame = {edge:g} mm unprintable edge. Print at 100% (Actual size), {mode}.")
         # 100 mm rulers, horizontal and vertical
         x0, y0 = max((w - 100) / 2, edge + 32), h * 0.72
         _ruler(c, x0, y0, horizontal=True)
@@ -63,11 +65,11 @@ def calibration_sheet(paper: str, target: Path, unprintable_edge_mm: float = 5, 
         c.setFont(SANS_BOLD, 10)
         c.drawCentredString(_mm(ax), _mm(ay - 6), "TOP")
         c.setFont(SANS, 8)
-        if side == "BACK":
+        if side == "BACK" and duplex:
             c.drawCentredString(_mm(w / 2), _mm(edge + 14),
                                 "Hold the sheet to the light: this arrow must lie over the arrow on the front.")
             c.drawCentredString(_mm(w / 2), _mm(edge + 9),
-                                "If it points the other way, change the duplex flip edge (long/short) in the printer.")
+                                f"If it points the other way, change the duplex flip edge ({flip_edge}) in the printer.")
         # Corner marks, 10 mm from each edge
         for cx in (10, w - 10):
             for cy in (10, h - 10):

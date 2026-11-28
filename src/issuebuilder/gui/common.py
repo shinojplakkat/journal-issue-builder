@@ -94,8 +94,16 @@ def set_combo(box: QComboBox, value: str) -> None:
         box.setCurrentIndex(index)
 
 
-def spin(value: float, low: float, high: float, step: float = 0.5, decimals: int = 1, suffix: str = "") -> QDoubleSpinBox:
-    box = QDoubleSpinBox()
+class ClickOnlyDoubleSpinBox(QDoubleSpinBox):
+    """A numeric field that never changes just because the pointer wheels over it."""
+
+    def wheelEvent(self, event) -> None:
+        event.ignore()
+
+
+def spin(value: float, low: float, high: float, step: float = 0.5, decimals: int = 1,
+         suffix: str = "", *, click_only: bool = False) -> QDoubleSpinBox:
+    box = ClickOnlyDoubleSpinBox() if click_only else QDoubleSpinBox()
     box.setRange(low, high)
     box.setDecimals(decimals)
     box.setSingleStep(step)

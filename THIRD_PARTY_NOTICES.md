@@ -16,6 +16,7 @@ each project; check them again before each public release.
 | pypdfium2 (with PDFium) | Page previews | Apache-2.0 / BSD-3-Clause | https://github.com/pypdfium2-team/pypdfium2 |
 | Pillow | Pictures | MIT-CMU (HPND) | https://python-pillow.org |
 | Liberation Fonts 2 | Page numbers, headers, covers | SIL OFL 1.1 (fonts/LICENSE-Liberation-OFL.txt) | https://github.com/liberationfonts |
+| Manjari 2.200 | Malayalam text; included in the Linux installer | SIL OFL 1.1 (packaging/linux/fonts/manjari/OFL.txt) | https://smc.org.in/ml/fonts/manjari/ |
 
 Programs used but not included (installed separately by the user):
 

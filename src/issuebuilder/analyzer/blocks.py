@@ -18,7 +18,8 @@ def analyze_word(path: Path) -> tuple[list[Block], list[str], float]:
     info = read_paragraphs(path)
     labels = label_paragraphs(info.paragraphs, info.body_size)
     blocks = [
-        Block(i=p.i, text=p.text, label=label, confidence=round(conf, 2), confirmed=False)
+        Block(i=p.i, text=p.text, label=label, confidence=round(conf, 2), confirmed=False,
+              source_indices=[p.i])
         for p, (label, conf) in zip(info.paragraphs, labels)
     ]
     return blocks, info.flags, info.body_size

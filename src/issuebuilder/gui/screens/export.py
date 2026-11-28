@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from PySide6.QtGui import QBrush, QColor
-from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                               QPlainTextEdit, QProgressBar, QPushButton, QTableWidget, QTableWidgetItem,
-                               QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QFormLayout, QGroupBox, QHBoxLayout,
+                               QHeaderView, QLabel, QPlainTextEdit, QProgressBar, QPushButton,
+                               QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from ...checks.validation import check_issue
 from ...outputs.export import run_export
-from ..common import AppState, Worker, ask, error, note, open_file, open_folder
+from ..common import AppState, Worker, ask, error, int_spin, note, open_file, open_folder
 
 
 class ExportScreen(QWidget):
@@ -22,6 +22,7 @@ class ExportScreen(QWidget):
         out_layout = QVBoxLayout(outputs)
         self.options = {
             "electronic_issue": QCheckBox("Electronic issue (one PDF with bookmarks and links)"),
+            "pdfa_electronic": QCheckBox("Also make a PDF/A-2b copy of the electronic issue (requires Ghostscript and an sRGB profile)"),
             "electronic_articles": QCheckBox("Electronic article PDFs (one per article, same page numbers)"),
             "include_covers_in_electronic": QCheckBox("Include the covers in the electronic issue"),
             "keep_blank_pages": QCheckBox("Keep blank pages in the electronic issue"),
@@ -32,6 +33,14 @@ class ExportScreen(QWidget):
         for box in self.options.values():
             out_layout.addWidget(box)
             box.toggled.connect(self.save_options)
+        self.abstract_limit = int_spin(250, 1, 5000)
+        self.image_dpi = int_spin(300, 72, 1200)
+        limits = QFormLayout()
+        limits.addRow("Maximum abstract length (words)", self.abstract_limit)
+        limits.addRow("Minimum print image resolution (dpi)", self.image_dpi)
+        out_layout.addLayout(limits)
+        self.abstract_limit.valueChanged.connect(self.save_options)
+        self.image_dpi.valueChanged.connect(self.save_options)
 
         checks = QGroupBox("Checks")
         checks_layout = QVBoxLayout(checks)
@@ -82,6 +91,12 @@ class ExportScreen(QWidget):
             box.blockSignals(True)
             box.setChecked(bool(getattr(export, key)))
             box.blockSignals(False)
+        self.abstract_limit.blockSignals(True)
+        self.image_dpi.blockSignals(True)
+        self.abstract_limit.setValue(export.abstract_word_limit)
+        self.image_dpi.setValue(export.min_image_dpi)
+        self.abstract_limit.blockSignals(False)
+        self.image_dpi.blockSignals(False)
         self.findings.setRowCount(0)
 
     def save_options(self) -> None:
@@ -90,6 +105,8 @@ class ExportScreen(QWidget):
         s = self.state.issue.load()
         for key, box in self.options.items():
             setattr(s.export, key, box.isChecked())
+        s.export.abstract_word_limit = self.abstract_limit.value()
+        s.export.min_image_dpi = self.image_dpi.value()
         self.state.issue.save(s)
 
     def show_findings(self, findings) -> None:
@@ -138,8 +155,10 @@ class ExportScreen(QWidget):
         self.export_button.setEnabled(True)
         self.progress.setRange(0, 1)
         self.progress.setValue(1)
+        self.show_findings(result.findings)
         lines = ["Export finished." if result.ok else "Export finished with problems."]
         lines += [f"• {n}" for n in result.notes]
+        lines += [f"• {f.level.capitalize()}: {f.where}: {f.message}" for f in result.findings]
         lines.append("")
         lines.append("Files:")
         lines += [f"  {f}" for f in result.files]

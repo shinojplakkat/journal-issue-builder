@@ -1,3 +1,3 @@
 """Journal Issue Builder: assembles journal issues from submitted articles."""
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

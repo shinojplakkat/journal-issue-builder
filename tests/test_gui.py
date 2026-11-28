@@ -11,6 +11,7 @@ from PySide6.QtCore import QSettings  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from issuebuilder.gui import app as gui  # noqa: E402
+from issuebuilder.gui.common import ClickOnlyDoubleSpinBox  # noqa: E402
 from issuebuilder.gui.screens.issue import ArticleDialog  # noqa: E402
 from issuebuilder.settings.models import Article, Author, Block  # noqa: E402
 
@@ -29,6 +30,11 @@ def test_window_and_screens(qapp, tmp_path, monkeypatch):
 
     window = gui.MainWindow()
     window.show()
+    area = qapp.primaryScreen().availableGeometry()
+    assert window.height() <= area.height()
+    assert window.minimumHeight() <= area.height()
+    assert "Window" in [action.text().replace("&", "") for action in window.menuBar().actions()]
+    assert "#f3f6fb" in qapp.styleSheet()
     window.start()
     assert window.state.journal is not None
     assert window.state.issue is not None, "a first issue is created on first run"
@@ -61,7 +67,18 @@ def test_window_and_screens(qapp, tmp_path, monkeypatch):
 
     layout_screen = window.screens[3][1]
     layout_screen.load()
+    layout_screen.sizes["abstract_pt"].setValue(15)
+    layout_screen.sizes["footnote_pt"].setValue(5)
+    monkeypatch.setattr("issuebuilder.gui.screens.layout.info", lambda *a, **k: None)
+    layout_screen.restore_defaults_button.click()
+    restored = issue.load().layout
+    assert restored.abstract_pt == 10
+    assert restored.footnote_pt == 9
     layout_screen.save()
+    layout_screen.script_choice.setCurrentIndex(layout_screen.script_choice.findData("Malayalam"))
+    layout_screen.script_font_choice.setCurrentText("Manjari")
+    layout_screen.map_script_font()
+    assert issue.load().layout.script_fonts["Malayalam"] == "Manjari"
 
     cover = window.screens[4][1]
     cover.load()
@@ -78,3 +95,19 @@ def test_window_and_screens(qapp, tmp_path, monkeypatch):
     assert issue.load_article("a01").title == "Changed title"
 
     window.close()
+
+
+def test_type_size_spinbox_ignores_wheel(qapp):
+    class IgnoredEvent:
+        ignored = False
+
+        def ignore(self):
+            self.ignored = True
+
+    box = ClickOnlyDoubleSpinBox()
+    box.setRange(5, 40)
+    box.setValue(12)
+    event = IgnoredEvent()
+    box.wheelEvent(event)
+    assert event.ignored
+    assert box.value() == 12

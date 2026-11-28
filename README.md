@@ -4,14 +4,15 @@ Offline desktop program (Windows and Ubuntu) that assembles a journal issue from
 articles in DOC, DOCX, ODT and PDF: an electronic issue PDF, per-article PDFs, print files for
 stapled (saddle-stitch) or glued binding, covers with spine, and single-article offprints.
 
-Status: first working version (0.1). Licence: AGPL-3.0. Planning document: BLUEPRINT.md.
+Version: 0.2.0. Licence: AGPL-3.0. See [BLUEPRINT.md](BLUEPRINT.md) for the
+module status, implementation choices, and outstanding sample/printer validation.
 
 ## Requirements
 
 - LibreOffice (installed separately) — converts DOC/ODT and lays out Word articles.
 - Optional: Ghostscript — grayscale print interiors.
-- Fonts: Liberation Serif/Sans (installed with LibreOffice) by default; Noto Serif Malayalam for
-  Malayalam text.
+- Fonts: Liberation Serif/Sans by default. Layout lets you add a local OTF/TTF/TTC font and map it
+  to a writing system; Manjari Malayalam is included in the Linux installer.
 
 The installers contain Python, Qt and all Python libraries.
 
@@ -34,21 +35,30 @@ The installers contain Python, Qt and all Python libraries.
    articles and optional back matter, with blank-page balancing (each part starts on a set side),
    roman/arabic numbering and a contents page iterated until its page count is stable.
 6. **Outputs** (`outputs/`, `cover/`, `pdfops/`):
-   - electronic issue: page labels matching printed numbers, bookmarks, clickable contents and DOI
-     links, metadata; blank pages removed by default;
+   - electronic issue: page labels matching printed numbers, bookmarks, clickable contents, DOI,
+     journal website and email links, metadata, and an optional proof watermark; blank pages removed by default;
    - per-article PDFs cut from the issue, so page numbers match;
    - print interior: glue mode in page order (even count), staple mode imposed two-up on A4 (A5
-     journal) or A3 (A4 journal) in booklet order (multiple of 4); gutter shift; optional grayscale;
+     journal) or A3 (A4 journal) in booklet order (multiple of 4); gutter shift; per-paper duplex,
+     flip-edge and colour/grayscale profiles;
    - covers: staple fold sheet; glue wrap (back | spine | front) with bleed, crop and fold marks on
      A3, spine = sheets × paper thickness + glue allowance (or a measured stack);
    - calibration sheets (100 mm rulers, unprintable edge, duplex flip arrows);
-   - offprints with cover, publication details, "how to cite", original page numbers and side.
+   - offprints with cover, publication details and editorial board, "how to cite", original page
+     numbers and side.
 7. **Checks** (`checks/validation.py`): missing journal/issue/article data, ISSN and ORCID check
-   digits, DOI suffix warnings, duplicate articles across issues, abstract length, small scaled text.
+   digits, DOI suffix warnings, duplicate articles across issues, abstract length, small scaled text,
+   low-resolution article and cover images, missing cover files and missing script fonts. Export
+   reports fonts that are not embedded.
    Every export writes `output/export_log.txt`.
 
 Page numbers, running headers and the first-page citation line are drawn with ReportLab and laid
-over the pages with pikepdf, so they look the same on Word-built and PDF articles.
+over the pages with pikepdf, so they look the same on Word-built and PDF articles. Review supports
+editing, merging and splitting Word blocks; corrections are recorded in each article's JSON file.
+Inside-front and inside-back pages can carry journal notes or advertisements.
+The layout editor prevents mouse-wheel changes to point sizes and includes a saved-defaults action;
+the main window fits the available screen, remains resizable, and has explicit minimize, maximize
+and restore controls.
 
 ## Data on disk
 
@@ -101,18 +111,21 @@ python samples/make_samples.py out/  # invented sample articles (DOCX, ODT, PDF,
 
 ## Building the installers
 
-The workflow `.github/workflows/build.yml` runs when the version number in
-`src/issuebuilder/__init__.py` changes (or when started from the Actions tab). It runs the
-tests on Windows and Ubuntu, builds the program with PyInstaller (`packaging/build_app.py`), makes
-the Windows installer with Inno Setup (`packaging/windows/installer.iss`, per-user install, no
-administrator rights) and the Ubuntu package (`packaging/linux/build_deb.sh`), and publishes both
-as a GitHub release tagged `v<version>`.
+The workflow `.github/workflows/build.yml` runs tests and package install checks on Windows and
+Ubuntu for pull requests targeting `main`. Versioned pushes to `main` (or a manual Actions run)
+also publish the Windows installer and Ubuntu package as a GitHub release tagged `v<version>`.
 
-## Changes from the blueprint's technology choices
+## Implementation choices and limits
 
-- pikepdf, ReportLab, pdfplumber and pypdfium2 are used instead of PyMuPDF, and LibreOffice lays out
-  the articles instead of Pandoc and Typst. All PDF work stays in `pdfops/`, as the blueprint asks.
-- Articles are restyled from the author's own Word file rather than rebuilt from extracted text,
-  which keeps tables, footnotes, images and complex scripts.
+- pikepdf, ReportLab, pdfplumber and pypdfium2 are used instead of PyMuPDF. LibreOffice lays out
+  articles instead of the planned Pandoc and Typst pipeline. The implementation edits a copy of the
+  author's Word file, preserving more existing document structure.
+- Low-level PDF editing is handled in `pdfops/`; cover and output modules call its shared helpers.
+- An optional PDF/A-2b copy can be made with Ghostscript when its PDF/A definition file and an sRGB
+  ICC profile are installed. Run veraPDF on that output before relying on conformance.
+- Export reports fonts that are not embedded. Generated overlays and front matter use embedded
+  fonts; fonts inherited from submitted PDFs may still be missing.
+- The repository has generated sample manuscripts but not the 10–20 real, anonymised manuscripts
+  or printed calibration/binding results required by the blueprint's acceptance criteria.
 
 See THIRD_PARTY_NOTICES.md for the components and their licences.

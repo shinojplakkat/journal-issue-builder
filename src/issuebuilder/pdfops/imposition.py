@@ -6,6 +6,10 @@ paper with PyMuPDF comes in milestone 7.
 
 from dataclasses import dataclass
 
+from pikepdf import Pdf, Rectangle
+
+from .pages import mm
+
 
 @dataclass(frozen=True)
 class SheetSide:
@@ -54,3 +58,19 @@ def print_sequence(page_count: int) -> list[int]:
     for sheet in booklet_sheets(page_count):
         sequence += [sheet.front.left, sheet.front.right, sheet.back.left, sheet.back.right]
     return sequence
+
+
+def impose_pdf(interior: Pdf, size: str, paper_sizes_mm: dict[str, tuple[float, float]]) -> Pdf:
+    """Place reading-order pages onto landscape sheets for saddle stitching."""
+    width, height = paper_sizes_mm[size]
+    sheet_w, sheet_h = 2 * width, height
+    left = Rectangle(0, 0, mm(width), mm(height))
+    right = Rectangle(mm(width), 0, mm(2 * width), mm(height))
+    out = Pdf.new()
+    for sheet in booklet_sheets(len(interior.pages)):
+        for side in (sheet.front, sheet.back):
+            out.add_blank_page(page_size=(mm(sheet_w), mm(sheet_h)))
+            page = out.pages[-1]
+            page.add_overlay(interior.pages[side.left - 1], left)
+            page.add_overlay(interior.pages[side.right - 1], right)
+    return out

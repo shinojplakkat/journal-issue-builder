@@ -124,6 +124,7 @@ def _import_pdf(settings: IssueSettings, copied: Path, article: Article) -> None
     article.short_title = article.title if len(article.title) <= 60 else ""
     article.authors = [Author(name=n) for n in suggestions.get("authors", []) if n]
     article.abstract = suggestions.get("abstract", "")
+    article.warnings.extend(report.warnings)
     article.warnings.append("PDF article: title, authors and abstract are only suggestions. Please check them.")
     target_width, _ = PAPER_SIZES_MM[settings.layout.page_size]
     if report.width_mm and abs(report.width_mm - target_width) > 2:

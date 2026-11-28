@@ -10,12 +10,34 @@ PKG="$ROOT/packaging/build/deb/journal-issue-builder_${VERSION}_amd64"
 rm -rf "$PKG"
 mkdir -p "$PKG/DEBIAN" "$PKG/opt/journal-issue-builder" "$PKG/usr/bin" \
          "$PKG/usr/share/applications" "$PKG/usr/share/icons/hicolor/256x256/apps" \
-         "$PKG/usr/share/doc/journal-issue-builder"
+         "$PKG/usr/share/doc/journal-issue-builder" "$PKG/usr/share/fonts/opentype/manjari"
 
 cp -a "$ROOT/dist/JournalIssueBuilder/." "$PKG/opt/journal-issue-builder/"
 ln -s /opt/journal-issue-builder/JournalIssueBuilder "$PKG/usr/bin/journal-issue-builder"
 cp "$ROOT/packaging/build/icon.png" "$PKG/usr/share/icons/hicolor/256x256/apps/journal-issue-builder.png"
 cp "$ROOT/LICENSE" "$PKG/usr/share/doc/journal-issue-builder/copyright"
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$PKG/usr/share/doc/journal-issue-builder/THIRD_PARTY_NOTICES.md"
+cp "$ROOT/packaging/linux/fonts/manjari/"*.otf "$PKG/usr/share/fonts/opentype/manjari/"
+cp "$ROOT/packaging/linux/fonts/manjari/OFL.txt" \
+   "$PKG/usr/share/doc/journal-issue-builder/Manjari-OFL.txt"
+
+cat > "$PKG/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+cat > "$PKG/DEBIAN/postrm" <<'EOF'
+#!/bin/sh
+set -e
+if command -v fc-cache >/dev/null 2>&1; then
+    fc-cache -f >/dev/null 2>&1 || true
+fi
+exit 0
+EOF
+chmod 755 "$PKG/DEBIAN/postinst" "$PKG/DEBIAN/postrm"
 
 cat > "$PKG/usr/share/applications/journal-issue-builder.desktop" <<EOF
 [Desktop Entry]

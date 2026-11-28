@@ -5,11 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from pikepdf import Pdf
-
 from ..assembler.issue import FRONT_PARTS, BACK_PARTS, Plan
 from ..cover.wrap import CoverPages
-from ..pdfops import bookmarks, inspect
+from ..pdfops import bookmarks, inspect, merge
 from ..settings.load_save import safe_name, unique_name
 from ..settings.models import IssueSettings, JournalSettings
 from .interior import build_interior
@@ -30,8 +28,7 @@ def contents_link_areas(contents_pdf: Path, entry_count: int) -> list[tuple[int,
     entry, in order. If the numbers cannot all be found, returns [].
     """
     areas = []
-    with Pdf.open(contents_pdf) as pdf:
-        page_total = len(pdf.pages)
+    page_total = inspect.page_count(contents_pdf)
     for page_index in range(page_total):
         words, height = inspect.find_words(contents_pdf, page_index)
         # The page number may be joined to the dot leader ("Practice.....19").
@@ -63,10 +60,9 @@ def electronic_issue(plan: Plan, journal: JournalSettings, issue: IssueSettings,
     offset = 0
     labels = [_label(s) for s in specs]
     if covers is not None:
-        pdf.pages.insert(0, interior.sources.open(covers.front).pages[0])
+        merge.add_cover_pages(pdf, interior.sources, covers.front, covers.back)
         offset = 1
         labels.insert(0, ("", None, "Cover"))
-        pdf.pages.append(interior.sources.open(covers.back).pages[0])
         labels.append(("", None, "Back cover"))
     bookmarks.set_page_labels(pdf, labels)
 
@@ -118,6 +114,38 @@ def electronic_issue(plan: Plan, journal: JournalSettings, issue: IssueSettings,
         if placement and placement.article.doi:
             bookmarks.add_link(pdf, position + offset, rect, uri=f"https://doi.org/{placement.article.doi}")
 
+    # Journal website text appears in the title and imprint pages. Make those
+    # printed occurrences clickable in the electronic issue as well.
+    website = journal.website.strip()
+    if website:
+        host = website.removeprefix("https://").removeprefix("http://").split("/", 1)[0].casefold()
+        uri = website if website.startswith(("https://", "http://")) else "https://" + website
+        for position, spec in enumerate(specs):
+            if spec.kind != "content" or spec.element not in {"title_page", "imprint", "masthead"} \
+                    or spec.source is None:
+                continue
+            try:
+                words, height = inspect.find_words(spec.source, spec.index)
+            except Exception:
+                continue
+            for word in words:
+                if host and host in word["text"].casefold():
+                    rect = (word["x0"], height - word["bottom"], word["x1"], height - word["top"])
+                    bookmarks.add_link(pdf, position + offset, rect, uri=uri)
+    email = journal.email.strip()
+    if email and "@" in email:
+        for position, spec in enumerate(specs):
+            if spec.kind != "content" or spec.element not in {"imprint", "masthead"} or spec.source is None:
+                continue
+            try:
+                words, height = inspect.find_words(spec.source, spec.index)
+            except Exception:
+                continue
+            for word in words:
+                if email.casefold() in word["text"].casefold():
+                    rect = (word["x0"], height - word["bottom"], word["x1"], height - word["top"])
+                    bookmarks.add_link(pdf, position + offset, rect, uri=f"mailto:{email}")
+
     authors = "; ".join(a.name for p in plan.placements for a in p.article.authors if a.name)
     issns = ", ".join(x for x in (f"ISSN {journal.print_issn} (Print)" if journal.print_issn else "",
                                   f"ISSN {journal.e_issn} (Online)" if journal.e_issn else "") if x)
@@ -128,8 +156,7 @@ def electronic_issue(plan: Plan, journal: JournalSettings, issue: IssueSettings,
         subject=f"{journal.title}, Volume {issue.volume}, Issue {issue.number}. {issns}",
         keywords=f"{journal.title}; Volume {issue.volume}; Issue {issue.number}; {issns}",
     )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    pdf.save(target)
+    merge.save(pdf, target)
     interior.close()
     return notes
 
@@ -160,8 +187,7 @@ def electronic_articles(plan: Plan, journal: JournalSettings, issue: IssueSettin
         name = unique_name(f"{issue.slug}_{safe_name(article.first_author_surname, 20)}_"
                            f"{safe_name(article.short_title or article.title, 30)}", used, ".pdf")
         target = folder / name
-        folder.mkdir(parents=True, exist_ok=True)
-        pdf.save(target)
+        merge.save(pdf, target)
         interior.close()
         files.append(target)
     return files

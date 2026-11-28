@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QStandardPaths
+from PySide6.QtCore import QSettings, QStandardPaths, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QHBoxLayout, QLabel, QMainWindow,
                                QMessageBox, QPlainTextEdit, QPushButton, QTabWidget, QToolBar, QVBoxLayout,
@@ -25,6 +25,40 @@ from .screens.review import ReviewScreen
 
 APP_NAME = "Journal Issue Builder"
 
+APP_STYLESHEET = """
+QWidget { color: #1f2937; font-size: 10pt; }
+QMainWindow, QDialog { background: #f3f6fb; }
+QToolBar { background: #ffffff; border: 0; border-bottom: 1px solid #dbe3ef; spacing: 10px; padding: 8px 12px; }
+QMenuBar { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 3px 8px; }
+QMenuBar::item { padding: 6px 10px; border-radius: 6px; }
+QMenuBar::item:selected, QMenu::item:selected { background: #e8efff; color: #1d4ed8; }
+QMenu { background: #ffffff; border: 1px solid #dbe3ef; padding: 6px; }
+QMenu::item { padding: 7px 28px 7px 12px; border-radius: 5px; }
+QTabWidget::pane { background: #f3f6fb; border: 0; }
+QTabBar::tab { background: #e9eef6; color: #475569; padding: 10px 14px; margin-right: 4px; border-top-left-radius: 9px; border-top-right-radius: 9px; }
+QTabBar::tab:selected { background: #ffffff; color: #1d4ed8; font-weight: 600; }
+QGroupBox { background: #ffffff; border: 1px solid #dce4ef; border-radius: 11px; margin-top: 14px; padding: 14px 10px 10px 10px; font-weight: 600; }
+QGroupBox::title { subcontrol-origin: margin; left: 12px; padding: 0 5px; color: #334155; }
+QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTableWidget, QListWidget, QTreeWidget {
+  background: #ffffff; border: 1px solid #cbd5e1; border-radius: 7px; padding: 5px 7px; selection-background-color: #dbeafe; selection-color: #1e3a8a;
+}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+  border: 1px solid #3b82f6;
+}
+QPushButton { background: #e9eff8; border: 1px solid #d2dce9; border-radius: 8px; padding: 8px 13px; color: #24364b; }
+QPushButton:hover { background: #dce8f8; border-color: #a9c4e8; }
+QPushButton:pressed { background: #cbdcf3; }
+QPushButton:disabled { color: #94a3b8; background: #eef2f7; }
+QCheckBox { spacing: 7px; }
+QHeaderView::section { background: #eef3f9; color: #334155; border: 0; border-bottom: 1px solid #dbe3ef; padding: 8px; font-weight: 600; }
+QScrollArea { background: transparent; border: 0; }
+QScrollBar:vertical { background: transparent; width: 12px; margin: 3px; }
+QScrollBar::handle:vertical { background: #c2ccda; border-radius: 5px; min-height: 28px; }
+QScrollBar::handle:vertical:hover { background: #94a3b8; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+QStatusBar { background: #ffffff; border-top: 1px solid #dbe3ef; color: #64748b; }
+"""
+
 
 def default_journal_folder() -> Path:
     documents = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)
@@ -35,9 +69,15 @@ def default_journal_folder() -> Path:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyle("Fusion")
+            app.setStyleSheet(APP_STYLESHEET)
         self.setWindowTitle(f"{APP_NAME} {__version__}")
-        self.resize(1200, 820)
         self.settings = QSettings("JournalIssueBuilder", "JournalIssueBuilder")
+        self._fit_to_available_screen()
+        self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowMinimizeButtonHint |
+                            Qt.WindowType.WindowMaximizeButtonHint | Qt.WindowType.WindowCloseButtonHint)
         self.state = AppState()
 
         toolbar = QToolBar("Issue")
@@ -89,6 +129,19 @@ class MainWindow(QMainWindow):
         quit_action = QAction("Quit", self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+        window_menu = self.menuBar().addMenu("&Window")
+        minimize = QAction("Minimize window", self)
+        minimize.setShortcut("Ctrl+Shift+I")
+        minimize.triggered.connect(self.showMinimized)
+        window_menu.addAction(minimize)
+        maximize = QAction("Maximize window", self)
+        maximize.setShortcut("Ctrl+Shift+M")
+        maximize.triggered.connect(self.showMaximized)
+        window_menu.addAction(maximize)
+        restore = QAction("Restore window size", self)
+        restore.setShortcut("Ctrl+Shift+N")
+        restore.triggered.connect(self.showNormal)
+        window_menu.addAction(restore)
         help_menu = self.menuBar().addMenu("&Help")
         check = QAction("System check…", self)
         check.triggered.connect(self.system_check)
@@ -98,6 +151,20 @@ class MainWindow(QMainWindow):
             self, APP_NAME, f"<b>{APP_NAME}</b> {__version__}<br>Creates journal issues and edited books from Word, ODT and PDF submissions.<br><br>"
                             "Licence: GNU AGPL-3.0. Uses LibreOffice, pikepdf, ReportLab, pdfplumber, pypdfium2, python-docx and Qt (PySide6)."))
         help_menu.addAction(about)
+
+    def _fit_to_available_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1100, 700)
+            self.setMinimumSize(680, 480)
+            return
+        area = screen.availableGeometry()
+        width = min(1200, max(600, area.width() - 48))
+        height = min(740, max(480, area.height() - 72))
+        self.setMinimumSize(min(760, width), min(540, height))
+        self.resize(width, height)
+        self.move(area.x() + (area.width() - width) // 2,
+                  area.y() + (area.height() - height) // 2)
 
     def start(self) -> None:
         last = self.settings.value("journal_folder", "")

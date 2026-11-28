@@ -1,9 +1,14 @@
 """End-to-end test: sample articles in, every output out. Needs LibreOffice."""
 
+import hashlib
+import lzma
 import sys
+import json
+import re
 from pathlib import Path
 
 import pikepdf
+import pdfplumber
 import pytest
 
 from issuebuilder.analyzer.orcid import is_valid
@@ -12,6 +17,9 @@ from issuebuilder.outputs.export import run_export
 from issuebuilder.outputs.offprint import make_offprints
 from issuebuilder.settings.load_save import JournalFolder
 from issuebuilder.tools.libreoffice import LIBREOFFICE
+
+GOLDEN = Path(__file__).parent / "golden"
+GOLDEN_INFO = json.loads((GOLDEN / "sample_issue_v1.json").read_text(encoding="utf-8"))
 
 pytestmark = pytest.mark.skipif(LIBREOFFICE.find() is None, reason="LibreOffice is not installed")
 
@@ -26,8 +34,21 @@ def issue(tmp_path_factory):
     journal = JournalFolder.create(root / "Journal")
     issue = journal.create_issue(1, 2, "July", 2027)
     settings = issue.load()
+    # Keep this controlled fixture stable across developers and CI workers.
+    settings.layout.indic_font = "Noto Serif Malayalam"
+    issue.save(settings)
     import_files(issue, settings, samples)
     return journal, issue
+
+
+@pytest.fixture(scope="module")
+def golden_pdf(tmp_path_factory):
+    """Expand the losslessly compressed binary baseline into pytest's temp folder."""
+    data = lzma.decompress((GOLDEN / "sample_issue_v1.pdf.xz").read_bytes())
+    assert hashlib.sha256(data).hexdigest() == GOLDEN_INFO["pdf_sha256"]
+    path = tmp_path_factory.mktemp("golden") / "sample_issue_v1.pdf"
+    path.write_bytes(data)
+    return path
 
 
 def test_import(issue):
@@ -49,7 +70,7 @@ def test_import(issue):
 
 
 @pytest.mark.parametrize("mode, multiple", [("staple", 4), ("glue", 2)])
-def test_export(issue, mode, multiple):
+def test_export(issue, golden_pdf, mode, multiple):
     journal, folder = issue
     settings = folder.load()
     settings.printing.binding_mode = mode
@@ -64,11 +85,23 @@ def test_export(issue, mode, multiple):
     assert result.log is not None and result.log.is_file()
 
     with pikepdf.open(folder.output / f"{settings.slug}_electronic_issue.pdf") as pdf:
+        with pikepdf.open(golden_pdf) as reference:
+            assert len(pdf.pages) == len(reference.pages) == GOLDEN_INFO["electronic_pages"]
         assert "/PageLabels" in pdf.Root
         with pdf.open_outline() as outline:
             assert [item.title for item in outline.root][:2] == ["Cover", "Title page"]
         links = sum(len(p.obj.get("/Annots", [])) for p in pdf.pages)
-        assert links >= 5   # one per contents entry
+        assert links == GOLDEN_INFO["link_annotations"]
+
+    with pdfplumber.open(folder.output / f"{settings.slug}_electronic_issue.pdf") as pdf:
+        contents = pdf.pages[GOLDEN_INFO["contents_pdf_page"] - 1].extract_text() or ""
+    entries = []
+    for line in contents.splitlines():
+        page_number = re.search(r"\.{2,}\s*(\d+)\s*$", line)
+        if page_number:
+            title = re.sub(r"\.{2,}\s*\d+\s*$", "", line).strip()
+            entries.append((title, int(page_number.group(1))))
+    assert entries == [tuple(row) for row in GOLDEN_INFO["contents_entries"]]
 
     interior = next(f for f in result.files if "print_interior" in f.name)
     with pikepdf.open(interior) as pdf:
@@ -81,6 +114,9 @@ def test_export(issue, mode, multiple):
     # Every article starts on a right-hand (odd) page.
     for article in folder.load_articles():
         assert article.start_page % 2 == 1, (article.id, article.start_page)
+    starts = {article.source_name: article.start_page for article in folder.load_articles()}
+    assert {name: starts[name] for name in GOLDEN_INFO["article_start_pages"]} == \
+        GOLDEN_INFO["article_start_pages"]
 
 
 def test_offprint_keeps_pages(issue):

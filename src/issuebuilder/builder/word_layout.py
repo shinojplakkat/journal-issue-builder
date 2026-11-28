@@ -12,6 +12,7 @@ Two modes:
 
 from __future__ import annotations
 
+from copy import copy, deepcopy
 from pathlib import Path
 
 from docx import Document
@@ -23,6 +24,7 @@ from docx.text.paragraph import Paragraph
 
 from ..settings.defaults import PAPER_SIZES_MM
 from ..settings.models import Article, LayoutSettings, MODE_JOURNAL
+from ..settings.script_fonts import noto_family, script_font, scripts_in
 
 BLACK = RGBColor(0, 0, 0)
 FRONT_LABELS = ("title", "subtitle", "author", "orcid", "email", "institution", "abstract", "keywords")
@@ -103,8 +105,13 @@ def fit_images_and_tables(document, layout: LayoutSettings) -> None:
 
 # --------------------------------------------------------------------------- fonts
 
-def set_run_font(run, name: str | None, size_pt: float | None, indic_font: str | None = None) -> None:
+def set_run_font(run, name: str | None, size_pt: float | None, indic_font: str | None = None,
+                 complex_font: str | None = None) -> None:
     """Set Latin and complex-script font and size for one run."""
+    if complex_font is None:
+        scripts = scripts_in(run.text or "")
+        if scripts:
+            complex_font = script_font(sorted(scripts)[0], indic_font or "")
     if size_pt:
         run.font.size = Pt(size_pt)
     rpr = run._element.get_or_add_rPr()
@@ -117,8 +124,8 @@ def set_run_font(run, name: str | None, size_pt: float | None, indic_font: str |
             fonts.set(qn(attr), name)
         for attr in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme"):
             fonts.attrib.pop(qn(attr), None)
-    if indic_font:
-        fonts.set(qn("w:cs"), indic_font)
+    if complex_font or indic_font:
+        fonts.set(qn("w:cs"), complex_font or indic_font)
         fonts.attrib.pop(qn("w:cstheme"), None)
     if size_pt:
         size_cs = rpr.find(qn("w:szCs"))
@@ -249,11 +256,14 @@ def restyle(document, article: Article, layout: LayoutSettings) -> None:
             fmt.line_spacing = Pt(layout.line_pt * (size / layout.body_pt))
         p.alignment = align
         for run in p.runs:
+            scripts = scripts_in(run.text or "")
+            complex_font = script_font(sorted(scripts)[0], indic, layout.script_fonts,
+                                       headings=font == heading) if scripts else None
             # Superscript markers and footnote numbers keep their own size.
             if run.font.superscript or run._element.find(qn("w:footnoteReference")) is not None:
-                set_run_font(run, font, None, indic)
+                set_run_font(run, font, None, indic, complex_font)
                 continue
-            set_run_font(run, font, size, indic)
+            set_run_font(run, font, size, indic, complex_font)
             if bold is not None:
                 run.font.bold = bold
             if italic is not None:
@@ -277,9 +287,68 @@ def restyle(document, article: Article, layout: LayoutSettings) -> None:
             anchor.addnext(new)
             para = Paragraph(new, paragraphs[last_front]._parent)
             run = para.add_run(text)
-            set_run_font(run, body, layout.ref_pt, indic)
+            scripts = scripts_in(run.text or "")
+            complex_font = script_font(sorted(scripts)[0], indic, layout.script_fonts) if scripts else None
+            set_run_font(run, body, layout.ref_pt, indic, complex_font)
             para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             para.paragraph_format.space_before = Pt(4)
+
+
+def apply_reviewed_blocks(document, article: Article) -> Article:
+    """Apply editor text edits, merges and splits to a working Word copy."""
+    original = list(document.paragraphs)
+    targets = []
+    for block in article.blocks:
+        indices = block.source_indices or [block.i]
+        indices = [i for i in indices if 0 <= i < len(original)]
+        if not indices:
+            continue
+        first = original[indices[0]]
+        targets.append((block, indices, first))
+        if len(indices) > 1:
+            first.text = block.text.replace("\n\n", "\n")
+            for index in indices[1:]:
+                paragraph = original[index]
+                if paragraph._p.getparent() is not None:
+                    paragraph._p.getparent().remove(paragraph._p)
+        elif first.text != block.text:
+            first.text = block.text.replace("\n\n", "\n")
+
+    # Consecutive blocks that point to one original paragraph are a reviewed split.
+    split_groups: dict[int, list] = {}
+    for block, indices, paragraph in targets:
+        if len(indices) == 1:
+            split_groups.setdefault(indices[0], []).append((block, paragraph))
+    target_paragraphs = {}
+    for block, indices, paragraph in targets:
+        target_paragraphs[id(block)] = paragraph
+    for source_index, group in split_groups.items():
+        if len(group) < 2:
+            continue
+        source = original[source_index]
+        source.text = group[0][0].text
+        previous = source
+        for block, _ in group[1:]:
+            node = deepcopy(source._p)
+            previous._p.addnext(node)
+            paragraph = Paragraph(node, source._parent)
+            paragraph.text = block.text
+            target_paragraphs[id(block)] = paragraph
+            previous = paragraph
+
+    current_indices = {paragraph._p: index for index, paragraph in enumerate(document.paragraphs)}
+    rebuilt = copy(article)
+    rebuilt.blocks = []
+    for block, _indices, _paragraph in targets:
+        paragraph = target_paragraphs[id(block)]
+        index = current_indices.get(paragraph._p)
+        if index is None:
+            continue
+        updated = copy(block)
+        updated.i = index
+        updated.source_indices = [index]
+        rebuilt.blocks.append(updated)
+    return rebuilt
 
 
 def prepare_word(source: Path, target: Path, article: Article, layout: LayoutSettings) -> Path:
@@ -288,7 +357,7 @@ def prepare_word(source: Path, target: Path, article: Article, layout: LayoutSet
     setup_pages(document, layout)
     fit_images_and_tables(document, layout)
     if article.mode == MODE_JOURNAL:
-        restyle(document, article, layout)
+        restyle(document, apply_reviewed_blocks(document, article), layout)
     target.parent.mkdir(parents=True, exist_ok=True)
     document.save(str(target))
     return target

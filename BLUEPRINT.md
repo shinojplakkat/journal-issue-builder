@@ -2,7 +2,33 @@
 
 Offline desktop software (Windows and Linux) that turns submitted articles in mixed formats into a finished journal issue: one electronic PDF, print-ready files, and single-article offprints.
 
-Version: 0.1 (planning). Status: nothing built yet.
+Version: 0.2.0 (implementation status updated 2026-11-28). The software is a working first version;
+the original plan below has been reconciled with the implementation and remaining validation work.
+
+## Current implementation status
+
+The repository contains a working journal workflow, GUI, export pipeline, Linux and Windows
+packaging, and a separate book workflow. The module requirements below describe the intended
+product; the status here records what has actually been implemented and what still needs evidence.
+
+| Area | Software status | Still needed |
+|---|---|---|
+| Journal and issue setup, import, analysis and review (M1–M5) | Implemented; tracked changes/comments are cleaned in working copies; review supports label, merge, edit and split with a correction log. | Validate analyzer quality on 10–20 real anonymised manuscripts; synthetic samples do not meet this criterion. |
+| Article layout and issue assembly (M6–M8) | Implemented with LibreOffice restyling of a copy of the submitted Word file; assembly, contents, page balancing, font profiles and inside-cover matter are present. A 31-page synthetic issue PDF now serves as a regression baseline for page count, contents entries/page numbers, bookmarks and links. | Visual fidelity across author files and multilingual scripts needs real samples. The planned Pandoc/Typst rebuild is a documented technology change. |
+| Covers (M9) | Image and generated covers, editable solid/pattern backgrounds, cover text overlays, back-cover details, spine and mark controls are implemented. | Confirm trim, bleed, fold, and binder measurements using printed samples and the intended binder. |
+| Print outputs (M10) | Staple/glue output, imposition, grayscale choice, per-paper duplex/flip/color profiles, 100% scale guidance, crop/fold marks, calibration sheets and thickness warning are implemented. | Print calibration and booklet/fold checks on the actual A5/A4/A3 printer are outstanding. |
+| Electronic PDF (M11) | Bookmarks, contents/DOI/site/email links, page labels, metadata, optional proof watermark, Ghostscript PDF/A-2b conversion, and an unembedded-font report are implemented. A 31-page, five-article synthetic issue passed veraPDF 1.30.4 PDF/A-2b validation (144 rules, 249,153 checks, no failures); its contents page was visually compared before and after conversion. The check also found and fixed missing flags on restored links. | Repeat PDF/A validation on an author-approved real issue and inspect its visual fidelity and links after conversion. |
+| Offprints (M12) | Single and batch electronic/print offprints preserve article numbering/parity and include publication details and the editorial masthead. | Confirm sample page ranges and booklet output on a printer. |
+| Validation (M13) | Journal/issue/article, DOI, ISSN/ORCID, duplicates, abstract, scaled text, image resolution and script-font checks are implemented. | Automated visual checks for dark grayscale images and physical page-count/print behavior still need print samples. |
+| GUI and packaging (M14–M15) | Workflow screens, screen-fitted resizable window, explicit minimize/maximize/restore menu, refreshed light theme, click-only type-size fields with a restore-defaults action, and Windows/Linux package build/install self-check steps are implemented. The existing release workflow builds on versioned main pushes or a manual run. | Perform a clean-machine install check before release. |
+
+The owner-provided sample issue contains nine original PDF files. A local read check accepted seven
+as text-readable and correctly flagged two scans; four of the readable PDFs exposed unmapped-glyph
+placeholders, so PDF import now suppresses unreliable metadata suggestions and asks the editor to
+enter them manually. These meeting-minute PDFs do not satisfy the 10–20 anonymised academic
+manuscript gate. Validation on an author-approved journal article and physical print/binding checks
+remain open and require approved files and printer/binder access. A synthetic golden issue and
+independent veraPDF validation are now present.
 
 ---
 
@@ -12,18 +38,18 @@ This file is the single source of truth. Give it to any AI assistant (for exampl
 
 **Starter prompt**
 
-> Read BLUEPRINT.md fully. We are building it one milestone at a time (section 11). Work only on the milestone I name. Before writing code, restate the acceptance criteria and list the files you will create. Write small functions with unit tests. Do not add features that are not in the blueprint. After each milestone, tell me exactly how to run it and what to check by eye. If something in the blueprint is unclear or marked "verify", ask me or propose a small experiment instead of guessing.
+> Read BLUEPRINT.md fully, including the current implementation status. Work on the incomplete item I name. Before writing code, restate the acceptance criteria and list the files you will change. Do not claim real-sample or print acceptance until those checks have actually happened. If something is unclear, ask or propose a small experiment instead of guessing.
 
 **Rules for the assistant**
 
 1. Python 3.11 or newer. Cross-platform: no Linux-only or Windows-only paths or commands. Use `pathlib`.
-2. Every external program (LibreOffice, Pandoc, Typst) is called through one wrapper module, with a clear error if it is missing.
+2. Every external program (LibreOffice, Ghostscript) is called through one wrapper module, with a clear error if it is missing.
 3. All measurements are in millimetres in the settings and code. Convert to points only inside layout code.
 4. Never modify the author's original files. Work on copies in the issue project folder.
 5. Every number in section 7 is a **default setting**, not a constant. Put them in a settings file.
 6. Anything marked **VERIFY** must be tested on a real sample before being trusted.
 7. Keep the code simple enough for a beginner to read. Comment the why, not the what.
-8. All PDF operations live in the `pdfops` module. No other module imports PyMuPDF directly.
+8. Target architecture: keep low-level PDF operations in the `pdfops` module. Cover, output, and book-export modules use the shared PDF helpers.
 
 **For the project owner (new to coding):** work in VS Code, commit to Git after every working milestone, and test with real articles from your authors as early as possible.
 
@@ -82,10 +108,10 @@ This file is the single source of truth. Give it to any AI assistant (for exampl
    [Importer]  LibreOffice (headless) converts doc/odt → docx
             │
    [Analyzer]  python-docx reads styles/bold/size → labelled blocks (JSON)
-            │         PyMuPDF reads PDFs → suggested metadata only
+            │         pdfplumber reads PDFs → suggested metadata only
    [Review screen]  editor corrects labels  → saved next to article
             │
-   [Builder]   Pandoc (docx → Typst) + journal Typst template → article PDF
+   [Builder]   Copy of Word file restyled by python-docx → LibreOffice → article PDF
             │         (PDF submissions are passed through unchanged)
    [Assembler] front matter + contents + blank-page rules + page numbers
             │
@@ -96,24 +122,31 @@ This file is the single source of truth. Give it to any AI assistant (for exampl
 
 | Job | Tool | Licence (from general knowledge — VERIFY before distributing) |
 |---|---|---|
-| Convert DOC/ODT/DOCX | LibreOffice, command line | MPL 2.0 |
-| Read Word structure | python-docx | MIT |
-| Word → layout format | Pandoc | GPL (run as separate program) |
-| Page layout engine | Typst | Apache 2.0 |
-| Read, merge, stamp, bookmarks, metadata, page previews, text with font size and position | PyMuPDF | AGPL 3.0 (or paid commercial) |
-| Grayscale conversion and PDF/A (optional, separate program) | Ghostscript | AGPL 3.0 (or paid commercial) |
+| Word reading and editing | python-docx | MIT |
+| Word page layout and conversion | LibreOffice Writer | MPL 2.0 |
+| PDF structure and merge | pikepdf | MPL 2.0 |
+| PDF text/image inspection | pdfplumber and pdfminer.six | MIT / MIT |
+| PDF preview rendering | pypdfium2 | Apache 2.0 |
+| PDF overlays and generated matter | ReportLab | BSD |
+| Grayscale conversion (optional, separate program) | Ghostscript | AGPL 3.0 (or paid commercial) |
 | OCR for scanned PDFs (optional) | OCRmyPDF + Tesseract | MPL 2.0 / Apache 2.0 |
 | GUI | PySide6 | LGPL |
 | Packaging | PyInstaller | GPL with packaging exception |
 | Fonts | Tinos, Arimo, Gelasio, Noto family, TeX Gyre | open font licences |
 
-**Decision:** PyMuPDF is the main PDF library. Ghostscript is used only for grayscale conversion and PDF/A, called as a separate optional program (the app still works without it; VERIFY whether Typst can export PDF/A directly). Because both are AGPL, this project is released under **AGPL-3.0** (section 13). All PDF operations go through our own `pdfops` module so a library can be swapped later.
+**Implementation decision:** the shipped software uses pikepdf, pdfplumber, pypdfium2 and ReportLab,
+and uses LibreOffice to lay out restyled Word copies. The planned Pandoc/Typst pipeline was not
+implemented. Low-level pikepdf operations are isolated in `pdfops`; cover, output, and book-export
+modules use the shared helpers. Ghostscript
+is optional and used for grayscale conversion and PDF/A-2b conversion. PDF/A conversion depends on
+Ghostscript's installed definition file and an available sRGB ICC profile; it uses strict
+compatibility mode and still needs independent validation. The project remains
+AGPL-3.0; see `THIRD_PARTY_NOTICES.md` for distribution notices and sources.
 
 ### 3.2 External programs
 
 - LibreOffice: must be installed by the user. The app checks for it at start-up and explains how to install.
-- Pandoc and Typst: single executables, bundled in the installer (or auto-detected on PATH).
-- Ghostscript: optional, for grayscale and PDF/A. Detect it at start-up and say what is disabled if it is missing.
+- Ghostscript: optional, for grayscale conversion. Detect it at start-up and explain when grayscale conversion is unavailable.
 
 ### 3.3 Folder structure (repository)
 
@@ -124,7 +157,7 @@ journal-issue-builder/
   pyproject.toml
   src/issuebuilder/
     settings/        models.py, defaults.py, load_save.py
-    tools/           libreoffice.py, pandoc.py, typst.py   (wrappers)
+    tools/           libreoffice.py, ghostscript.py        (wrappers)
     importers/       convert.py, docx_reader.py, pdf_reader.py
     analyzer/        blocks.py, rules.py, orcid.py, confidence.py
     builder/         typst_render.py, article_template.typ, front_matter.typ
@@ -257,11 +290,11 @@ Reads the DOCX and labels each block.
 - Detect and flag: tables, images, footnotes, equations (these make automatic rebuild risky).
 - Rules live in one file so they can be improved from real samples. Corrections are logged so rules can be tuned later.
 
-AC: on 10 real sample articles, title, authors, abstract and references are labelled correctly for most of them, and every uncertain block is highlighted for review.
+AC: software behavior is implemented, but this criterion is **not yet demonstrated**: the repository does not contain the required 10–20 approved real sample articles.
 
 ### M4b — PDF articles
 
-- Only suggest title, authors, abstract using font size and position (PyMuPDF).
+- Only suggest title, authors, abstract using font size and position (pdfplumber).
 - The editor confirms title, authors, and start details manually.
 - PDF pages are inserted unchanged. Check the effective font size after scaling and warn if the body would be below 9 pt.
 
@@ -276,13 +309,13 @@ AC: a corrected article reloads with the same labels; changing a label updates t
 
 ### M6 — Article builder
 
-- Word-type articles: build from labelled blocks through Pandoc and a Typst template into an article PDF at the issue's page size and typography profile.
+- Word-type articles: the current implementation edits a working copy of the submitted Word document using the reviewed labels and LibreOffice lays it out at the issue's page size and typography profile. This replaces the planned Pandoc/Typst rebuild.
 - Title bold, author line with ORCID, institution lines, abstract, keywords, headings, body, references.
 - Page numbering uses the issue's continuous numbers (the assembler supplies the start page).
 - Articles flagged complex, or marked "keep original", are converted to PDF with LibreOffice and passed through (scaled only if the editor allows).
-- VERIFY: fidelity of the Pandoc docx → Typst path on tables, footnotes and images.
+- VERIFY: fidelity of the restyled Word copy on tables, footnotes, images and complex scripts using real manuscripts.
 
-AC: one sample article produces an A5 PDF whose body text is 11 pt (default) and whose structure matches the labels.
+AC: layout and rebuild-from-reviewed-block editing are implemented. Confirm body size and visual fidelity against real author manuscripts before treating this criterion as passed.
 
 ### M7 — Issue assembly
 
@@ -360,7 +393,7 @@ AC: for 80, 120 and 200 interior pages the spine matches the formula to 0.1 mm; 
 | Cover paper | A4 landscape, folded | A3 wrap, trimmed |
 | Gutter default | about 5 mm | about 12–15 mm |
 
-- Interior always grayscale (Ghostscript, optional; if it is missing, warn and export without conversion). Warn if grayscale images look too dark or low-resolution (below about 300 dpi).
+- Interior defaults to grayscale, configurable by paper profile (Ghostscript, optional; if it is missing, warn and export without conversion). Low image resolution is reported; grayscale darkness still requires visual print review.
 - Mirrored margins: the inner margin flips on right and left pages.
 - Print profiles for A5, A4, A3: duplex on/off, flip edge, scale locked at 100 percent (never fit to page), unprintable edge (default 5 mm), crop and fold marks on/off, colour or black and white.
 - **Calibration sheet** per paper size: a 100 mm ruler, edges, and flip arrows.
@@ -373,7 +406,8 @@ AC: the booklet order test in section 6.3 passes; a printed calibration sheet me
 - Single PDF with bookmarks per article and per front-matter section, clickable contents, clickable DOI and web links, PDF metadata (title, journal, volume, issue, ISSN, authors).
 - No gutter and no crop marks. Colour allowed.
 - Option: remove blank pages while keeping the printed page numbers (default on); option to keep them.
-- Fonts embedded. Optional PDF/A export (VERIFY Typst or tool support).
+- Export checks report fonts that are not embedded. Generated overlay and front-matter fonts are embedded by their PDF generators; source PDFs may retain non-embedded fonts.
+- Optional PDF/A-2b output is made with Ghostscript strict compatibility mode and an sRGB ICC profile. Validate each file with veraPDF before relying on conformance.
 
 AC: PDF opens with working bookmarks and links; page labels match the printed numbering.
 
@@ -421,9 +455,9 @@ Header and footer settings: text for left and right pages (default: short journa
 
 ### M15 — Packaging
 
-- PyInstaller builds for Windows and Linux. Windows installer must be built and tested on a Windows machine.
+- PyInstaller builds for Windows and Linux; CI installs the generated Windows installer and Linux package and runs their self-checks.
 - Installer or first-run check for LibreOffice, with clear instructions.
-- Bundle Typst, Pandoc and fonts.
+- Fonts used by the program are packaged where applicable; LibreOffice is installed separately.
 - Include licence notices and source offers for bundled GPL and MPL tools.
 
 ---
@@ -545,9 +579,9 @@ Maximum two families per journal. Bundle open-licence fonts and embed them in ev
 | Classic (default) | Tinos (Times-like) | Arimo (Helvetica or Arial-like) |
 | Book style | TeX Gyre Pagella (Palatino-like) | TeX Gyre Heros |
 | Modern | Gelasio or Source Serif 4 | Arimo |
-| Indian scripts | Noto Serif Malayalam and others | Noto Sans Malayalam and others |
+| Indian scripts | User-mapped script fonts (Manjari included for Malayalam), with Noto fallbacks | User-mapped script fonts, with Noto fallbacks |
 
-Text blocks in another script switch to the matching Noto font automatically.
+Text blocks in another script use the font mapped to that script in Layout, then fall back to Noto. Users can import local OTF/TTF/TTC files and map them by script.
 
 ---
 
@@ -563,11 +597,11 @@ Text blocks in another script switch to the matching Noto font automatically.
 
 ## 9. Testing plan
 
-1. **Sample set:** collect 10–20 real, anonymised articles (DOC, DOCX, ODT, PDF; some with tables, images, footnotes, tracked changes; one scanned PDF; one Malayalam).
+1. **Sample set (outstanding):** collect 10–20 real, anonymised articles (DOC, DOCX, ODT, PDF; some with tables, images, footnotes, tracked changes; one scanned PDF; one Malayalam). Generated samples exercise the pipeline but do not satisfy this check.
 2. **Unit tests:** spine formula, wrap size, blank-page balancing, booklet order, ORCID check, contents page numbers, effective font size.
-3. **Golden files:** keep a few reference PDFs; compare page counts and page numbers after changes.
-4. **Print tests:** print the calibration sheet on A5, A4 and A3; print one stapled A5 booklet and fold it; fold a cover; measure a stack for the spine; do a trial with the binder.
-5. **Cross-platform:** run the full build on Linux and on Windows before each release.
+3. **Golden files:** a generated 31-page reference PDF and JSON page-number manifest now guard the issue pipeline (`tests/golden/`). The baseline is synthetic; compare it and later real-issue references after changes.
+4. **Print tests (outstanding):** print the calibration sheet on A5, A4 and A3; print one stapled A5 booklet and fold it; fold a cover; measure a stack for the spine; do a trial with the binder.
+5. **Cross-platform:** the GitHub Actions workflow builds and installs packages on Linux and Windows; confirm passing runs for each release.
 
 ---
 
@@ -575,14 +609,14 @@ Text blocks in another script switch to the matching Noto font automatically.
 
 | Item | Action |
 |---|---|
-| Pandoc → Typst fidelity on complex Word files | Test early (milestone 3); keep "keep original" fallback |
-| Typst blank-page and PDF/A features | VERIFY on current Typst version |
+| Restyled Word fidelity on complex files | Test with real manuscripts; keep the "keep original" fallback |
+| PDF/A conformance | Ghostscript PDF/A-2b output passed veraPDF 1.30.4 (144 rules, 249,153 checks) on the generated 31-page issue. Repeat on a real journal issue before release. |
 | Duplex flip direction for imposed sheets | VERIFY with the calibration sheet |
 | Binder requirements (spine formula, bleed, cover format) | Ask the binder before first glue-bound issue |
 | Printer unprintable edge and A3 margins | Measure with calibration sheet |
 | Reference style (numbered or author-year), single "References" heading | Decide per journal |
 | ISSN rules vary by country | Check with the national ISSN centre |
-| Windows build | Needs a Windows computer for testing |
+| Windows build | CI builds and installs on a Windows runner; confirm CI success before each release. |
 | Multilingual content | Decide the languages and test the fonts |
 | Licences | Re-check every bundled tool before distributing |
 
@@ -592,7 +626,9 @@ Later ideas: exporting article metadata for indexing services (for example Cross
 
 ## 11. Milestones
 
-Build in this order. Do not start the next until the current one passes its acceptance criteria and is committed to Git.
+This table records the original planned sequence. The shipped implementation followed a changed
+sequence; use the current implementation status table at the beginning of this document for its
+actual state. Historical milestones do not imply their real-sample or physical acceptance checks passed.
 
 | # | Milestone | Deliverable | Done when |
 |---|---|---|---|
@@ -628,4 +664,8 @@ Milestones 1–9 give a complete assembly tool using the articles as they arrive
 
 ## 13. Licence and credits
 
-Licence of this project: **GNU Affero General Public License v3.0 (AGPL-3.0)**, chosen because PyMuPDF and Ghostscript are AGPL. The repository is public. Keep a `THIRD_PARTY_NOTICES.md` listing every bundled tool, its licence and source link. Never commit real author manuscripts or private data: keep them in a folder listed in `.gitignore`.
+Licence of this project: **GNU Affero General Public License v3.0 (AGPL-3.0)**. The implementation
+uses components with different licences, including Ghostscript (AGPL) and pikepdf (MPL); do not
+infer component licensing from the project licence. Verify each bundled component's licence and
+distribution obligations before release, and keep `THIRD_PARTY_NOTICES.md` current. Never commit
+real author manuscripts or private data: keep them in a folder listed in `.gitignore`.
